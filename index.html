@@ -38,12 +38,18 @@
         <li>オートショット（毎秒8発）</li>
         <li>BGM＋発射音＋爆発音（最初のタップで有効化）</li>
       </ul>
-      <div class="row"><button class="btn" id="startBtn" onclick="window._safeStart && window._safeStart(event)">START</button></div>
+      <div class="row"><button class="btn" id="startBtn">START</button></div>
     </div>
   </div>
 
 <script>
 (function(){
+  // --- quick self-test to catch markup issues ---
+  (function(){
+    const missing = ['game','score','best','menu','startBtn'].filter(id=>!document.getElementById(id));
+    if(missing.length){ console.error('DOM self-test failed. Missing:', missing); }
+  })();
+
   var cv = document.getElementById('game');
   var ctx = cv.getContext('2d');
   var scoreEl = document.getElementById('score');
@@ -55,7 +61,7 @@
   var dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function resize(){ var w=innerWidth, h=innerHeight; cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; ctx.setTransform(dpr,0,0,dpr,0,0);} window.addEventListener('resize', resize, {passive:true}); resize();
 
-  var state={ running:false,last:performance.now(),elapsed:0,score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], boss:null };
+  var state={ running:false,last:performance.now(),elapsed:0,score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], boss:null, bossShots:[] };
   bestEl.textContent='BEST '+String(state.best).padStart(4,'0');
 
   // ===== Audio (safe) =====
@@ -85,7 +91,16 @@
   function drawBG(){ var w=innerWidth,h=innerHeight; var g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,'#0b1b3a'); g.addColorStop(1,'#091226'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);} 
   function drawRocket(x,y,r,t){ ctx.save(); ctx.translate(x,y); var fl=Math.sin(t*20)*2+6; ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0,r+2); ctx.lineTo(-4,r+2+fl); ctx.lineTo(4,r+2+fl); ctx.closePath(); ctx.fill(); ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75); ctx.lineTo(-r*0.55,r*0.75); ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r); ctx.fill(); ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2); ctx.fill(); ctx.restore(); }
   function drawUFO(e){ ctx.save(); ctx.translate(e.x,e.y); ctx.fillStyle='#9ca3af'; ctx.beginPath(); ctx.ellipse(0,0,e.r*1.5,e.r*0.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.ellipse(0,-e.r*0.3,e.r*0.8,e.r*0.5,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
-  function drawBoss(b){ ctx.save(); ctx.translate(b.x, b.y); var w=b.w, h=b.h; ctx.fillStyle='#94a3b8'; ctx.fillRect(-w/2, -h/2, w, h); ctx.fillStyle='#6b7280'; ctx.fillRect(-w*0.35, -h*0.7, w*0.7, h*0.4); ctx.fillStyle='#cbd5e1'; for(var i=-2;i<=2;i++){ var tx=i*(w*0.16); ctx.fillRect(tx-12, -h*0.15, 24, 16); ctx.fillRect(tx-4, -h*0.15-18, 8, 18);} ctx.fillStyle='#fbbf24'; for(var j=0;j<6;j++){ ctx.fillRect(-w/2 + 12 + j*(w-24)/5, h*0.25, 8, 8);} ctx.restore(); }
+  function drawBoss(b){ ctx.save(); ctx.translate(b.x,b.y); // Red UFO boss
+    // saucer body
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath(); ctx.ellipse(0,0,b.w*0.45,b.h*0.28,0,0,Math.PI*2); ctx.fill();
+    // dome
+    ctx.fillStyle = '#fecaca';
+    ctx.beginPath(); ctx.ellipse(0,-b.h*0.18,b.w*0.18,b.h*0.18,0,0,Math.PI*2); ctx.fill();
+    // rim highlight
+    ctx.strokeStyle = '#f87171'; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(0,0,b.w*0.45,b.h*0.28,0,0,Math.PI*2); ctx.stroke();
+  ctx.restore(); }
   function drawExplosions(){ for(var i=state.explosions.length-1;i>=0;i--){ var ex=state.explosions[i]; var life=1 - ex.age/ex.life; if(life<=0){ state.explosions.splice(i,1); continue; } for(var k=0;k<ex.parts.length;k++){ var p=ex.parts[k]; ctx.globalAlpha = life; ctx.fillStyle = p.color; ctx.fillRect(p.x-1.5, p.y-1.5, 3, 3); ctx.globalAlpha = 1; } } }
 
   // ===== Game Logic =====
@@ -103,7 +118,7 @@
     state.player.y = clamp(state.player.y, 0.10, 0.95);
 
     // Boss spawn by kills (score >= 20)
-    if(!state.boss && state.score >= 20){ state.enemies.length = 0; state.spawnAcc = 0; var bw = Math.min(w*0.75, 520), bh = Math.min(h*0.18, 140); state.boss = { x:w/2, y:h*0.22, w:bw, h:bh, vx:60, hp:100 }; bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; }
+    if(!state.boss && state.score >= 20){ state.enemies.length = 0; state.spawnAcc = 0; var bw = Math.min(w*0.75, 520), bh = Math.min(h*0.18, 140); var amp = Math.min(w*0.15, 60); state.boss = { x:w/2, y:h*0.22, w:bw, h:bh, hp:100, t:0, cx:w/2, amp:amp, fireAcc:0 }; bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; }
 
     // Auto fire (8/s)
     state.player.fireAcc += dt; var fireEvery=1000/8; while(state.player.fireAcc>=fireEvery){ state.player.fireAcc-=fireEvery; state.bullets.push({ x:state.player.x*w, y:state.player.y*h - state.player.r, vy:-360 }); if(audioCtx) sfxShoot(); }
@@ -119,9 +134,14 @@
     if(!state.boss){ outer: for(var i=state.enemies.length-1;i>=0;i--){ var e=state.enemies[i]; for(var j=state.bullets.length-1;j>=0;j--){ var bb=state.bullets[j]; var dx=bb.x-e.x, dy=bb.y-e.y; if(dx*dx+dy*dy <= e.r*e.r){ state.enemies.splice(i,1); state.bullets.splice(j,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(e.x,e.y); break outer; } } } }
 
     // boss move & hits
-    if(state.boss){ var B=state.boss; B.x += B.vx * dt/1000; if(B.x - B.w/2 < 10 || B.x + B.w/2 > w-10){ B.vx *= -1; } for(var k=state.bullets.length-1;k>=0;k--){ var sb=state.bullets[k]; if(sb.x>=B.x-B.w/2 && sb.x<=B.x+B.w/2 && sb.y>=B.y-B.h/2 && sb.y<=B.y+B.h/2){ state.bullets.splice(k,1); if(B.hp>0){ B.hp--; if(audioCtx) sfxExplode(); bossBadge.textContent='BOSS '+B.hp; createExplosion(sb.x,sb.y); if(B.hp<=0){ bossBadge.textContent='BOSS 0'; return gameClear(); } } } }
+    if(state.boss){ var B=state.boss; // small sinusoidal movement near center
+      B.t += dt/1000; var margin = 12; B.x = Math.max(B.w*0.5+margin, Math.min(w - B.w*0.5 - margin, B.cx + B.amp*Math.sin(B.t*2.0)));
+      // boss firing toward player
+      B.fireAcc += dt; var fireEveryBoss = 900; while(B.fireAcc >= fireEveryBoss){ B.fireAcc -= fireEveryBoss; var px=state.player.x*w, py=state.player.y*h; var sx=B.x, sy=B.y + B.h*0.1; var dx=px - sx, dy=py - sy; var len=Math.max(1, Math.hypot(dx,dy)); var speed=260; state.bossShots.push({ x:sx, y:sy, vx:dx/len*speed, vy:dy/len*speed, r:4 }); }
+      // bullet -> boss
+      for(var k=state.bullets.length-1;k>=0;k--){ var sb=state.bullets[k]; if(sb.x>=B.x-B.w/2 && sb.x<=B.x+B.w/2 && sb.y>=B.y-B.h/2 && sb.y<=B.y+B.h/2){ state.bullets.splice(k,1); if(B.hp>0){ B.hp--; if(audioCtx) sfxExplode(); bossBadge.textContent='BOSS '+B.hp; createExplosion(sb.x,sb.y); if(B.hp<=0){ bossBadge.textContent='BOSS 0'; return gameClear(); } } } }
       // player collision with boss
-      var px=state.player.x*w, py=state.player.y*h, pr=state.player.r; var inX = px+pr > B.x-B.w/2 && px-pr < B.x+B.w/2; var inY = py+pr > B.y-B.h/2 && py-pr < B.y+B.h/2; if(inX && inY){ return endGame(); }
+      var pxp=state.player.x*w, pyp=state.player.y*h, pr=state.player.r; var inX = pxp+pr > B.x-B.w/2 && pxp-pr < B.x+B.w/2; var inY = pyp+pr > B.y-B.h/2 && pyp-pr < B.y+B.h/2; if(inX && inY){ return endGame(); }
     } else {
       // enemy -> player
       var px=state.player.x*w, py=state.player.y*h, pr=state.player.r; for(var m=0;m<state.enemies.length;m++){ var ee=state.enemies[m]; var dx2=px-ee.x, dy2=py-ee.y; if(dx2*dx2+dy2*dy2 <= (pr+ee.r)*(pr+ee.r)){ return endGame(); } }
@@ -129,9 +149,12 @@
 
     // explosions update
     for(var q=state.explosions.length-1;q>=0;q--){ var ex=state.explosions[q]; ex.age += dt; var damp=0.98; for(var p=0;p<ex.parts.length;p++){ var part=ex.parts[p]; part.x += part.vx * dt/1000; part.y += part.vy * dt/1000; part.vx *= damp; part.vy *= damp; part.vy += 180 * dt/1000 * 0.2; } if(ex.age>ex.life){ state.explosions.splice(q,1); } }
-  }
+    // boss shots update & collision with player
+    if(state.bossShots.length){ var pxs=state.player.x*w, pys=state.player.y*h, prs=state.player.r; for(var bs=state.bossShots.length-1; bs>=0; bs--){ var shot=state.bossShots[bs]; shot.x += shot.vx * dt/1000; shot.y += shot.vy * dt/1000; if(shot.x < -20 || shot.x > w+20 || shot.y < -40 || shot.y > h+40){ state.bossShots.splice(bs,1); continue; } var dxs = pxs - shot.x, dys = pys - shot.y; if(dxs*dxs + dys*dys <= (prs+shot.r)*(prs+shot.r)){ return endGame(); } } }
+    }
+  
 
-  function draw(){ drawBG(); var w=innerWidth, h=innerHeight; ctx.globalAlpha=.08; ctx.strokeStyle='#ffffff'; for(var y=0;y<h;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } for(var x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1; var px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000); ctx.fillStyle='#fde047'; for(var i=0;i<state.bullets.length;i++){ var b=state.bullets[i]; ctx.fillRect(b.x-2,b.y-8,4,8); } if(state.boss){ drawBoss(state.boss); } else { for(var j=0;j<state.enemies.length;j++){ drawUFO(state.enemies[j]); } } drawExplosions(); }
+  function draw(){ drawBG(); var w=innerWidth, h=innerHeight; ctx.globalAlpha=.08; ctx.strokeStyle='#ffffff'; for(var y=0;y<h;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } for(var x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1; var px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000); ctx.fillStyle='#fde047'; for(var i=0;i<state.bullets.length;i++){ var b=state.bullets[i]; ctx.fillRect(b.x-2,b.y-8,4,8); } if(state.boss){ drawBoss(state.boss); } else { for(var j=0;j<state.enemies.length;j++){ drawUFO(state.enemies[j]); } } ctx.fillStyle = '#ef4444'; for(var s=0;s<state.bossShots.length;s++){ var sh=state.bossShots[s]; ctx.beginPath(); ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI*2); ctx.fill(); } drawExplosions(); }
 
   function loop(){ if(!state.running) return; var now=performance.now(); var dt=now-state.last; if(dt>80) dt=80; state.last=now; update(dt); draw(); requestAnimationFrame(loop); }
 
@@ -139,10 +162,10 @@
   function endGame(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
   function gameClear(){ state.running=false; var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">巨大戦艦を撃破しました！<br>Score: <strong>'+state.score+'</strong></p><div class="row"><button class="btn" id="againBtn">PLAY AGAIN</button></div></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
 
-  // ====== SAFE START binding (inline + listeners) ======
-  window._safeStart = function(e){ try{ if(e){ if(e.preventDefault) e.preventDefault(); if(e.stopPropagation) e.stopPropagation(); } }catch(_){} try{ if(!audioCtx) initAudio(); }catch(_){} startGame(); };
+  // ====== SAFE START binding (no inline handler) ======
   var startBtn = document.getElementById('startBtn');
-  if (startBtn){ ['click','pointerdown','touchstart'].forEach(function(ev){ startBtn.addEventListener(ev, window._safeStart, {passive:false}); }); startBtn.onclick = window._safeStart; }
+  function safeStart(e){ try{ if(e&&e.preventDefault) e.preventDefault(); if(e&&e.stopPropagation) e.stopPropagation(); }catch(_){} try{ if(!audioCtx) initAudio(); }catch(_){} startGame(); }
+  if (startBtn){ ['click','pointerdown','touchstart'].forEach(function(ev){ startBtn.addEventListener(ev, safeStart, {passive:false}); }); startBtn.onclick = safeStart; }
 })();
 </script>
 </body>
