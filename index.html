@@ -74,6 +74,9 @@
   function sfxShoot(){ if(!audioCtx) return; tone(700,0.05,'square',0.18,audioCtx.currentTime); }
   function sfxExplode(){ if(!audioCtx) return; var t=audioCtx.currentTime; tone(120,0.25,'sawtooth',0.3,t); tone(60,0.20,'triangle',0.25,t+0.03); }
 
+  // ===== Assets (Boss image) =====
+  var bossImg=new Image(); var bossReady=false; bossImg.onload=function(){ bossReady=true; }; bossImg.src='boss.png'; // ← 画像ファイルを index.html と同じ場所に置いてください
+
   // ===== Input: finger-follow =====
   var dragging=false;
   function setTargetFromEvent(e){ var t=e.touches?e.touches[0]:e; var r=cv.getBoundingClientRect(); var nx=(t.clientX-r.left)/r.width; var ny=(t.clientY-r.top)/r.height; state.player.tx=Math.max(0.05,Math.min(0.95,nx)); state.player.ty=Math.max(0.10,Math.min(0.95,ny)); }
@@ -90,7 +93,9 @@
   function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
   function drawRocket(){ var x=state.player.x*innerWidth, y=state.player.y*innerHeight, r=state.player.r; ctx.save(); ctx.translate(x,y); var fl=Math.sin(performance.now()/50)*2+6; ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0,r+2); ctx.lineTo(-4,r+2+fl); ctx.lineTo(4,r+2+fl); ctx.closePath(); ctx.fill(); ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75); ctx.lineTo(-r*0.55,r*0.75); ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r); ctx.fill(); ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2); ctx.fill(); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r*1.6,0,Math.PI*2); ctx.stroke(); } ctx.restore(); }
   function drawUFO(e){ ctx.save(); ctx.translate(e.x,e.y); ctx.fillStyle='#9ca3af'; ctx.beginPath(); ctx.ellipse(0,0,e.r*1.5,e.r*0.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.ellipse(0,-e.r*0.3,e.r*0.8,e.r*0.5,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
-  function drawBoss(B){ ctx.save(); ctx.translate(B.x,B.y); ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.ellipse(0,0,B.w*0.45,B.h*0.25,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fecaca'; ctx.beginPath(); ctx.ellipse(0,-B.h*0.18,B.w*0.18,B.h*0.18,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  function drawBoss(B){ ctx.save(); ctx.translate(B.x,B.y); if(bossReady){ ctx.drawImage(bossImg, -B.w/2, -B.h/2, B.w, B.h); } else { // fallback: 赤UFO
+      ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.ellipse(0,0,B.w*0.45,B.h*0.25,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fecaca'; ctx.beginPath(); ctx.ellipse(0,-B.h*0.18,B.w*0.18,B.h*0.18,0,0,Math.PI*2); ctx.fill(); }
+    ctx.restore(); }
   function drawItem(it){ ctx.save(); ctx.translate(it.x,it.y); ctx.fillStyle='#fef08a'; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#0b0f1a'; ctx.font='700 14px system-ui, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(it.type,0,1); ctx.restore(); }
   function createExplosion(x,y,strong){ var n=strong?40:18, parts=[]; for(var i=0;i<n;i++){ var a=Math.random()*Math.PI*2, sp=rand(80, strong?320:240); parts.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?'#fde047':'#f97316'});} state.explosions.push({parts:parts,age:0,life: strong?700:500}); }
 
@@ -123,10 +128,17 @@
     outer: for(var ei=state.enemies.length-1; ei>=0; ei--){ var E=state.enemies[ei]; for(var bj=state.bullets.length-1; bj>=0; bj--){ var BB=state.bullets[bj]; var dx=BB.x-E.x, dy=BB.y-E.y; if(dx*dx+dy*dy <= E.r*E.r){ state.enemies.splice(ei,1); state.bullets.splice(bj,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(E.x,E.y,false); maybeSpawnItem(E.x,E.y); break outer; } } }
 
     // boss spawn at 30 kills
-    if(!state.boss && state.score>=30){ var bw=Math.min(innerWidth*0.75,520), bh=Math.min(innerHeight*0.18,140), amp=Math.min(innerWidth*0.15,60); state.boss={x:innerWidth/2,y:innerHeight*0.22,w:bw,h:bh,hp:100,t:0,cx:innerWidth/2,amp:amp,fireAcc:0}; bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; if(audioCtx) startBGM('boss'); }
+    if(!state.boss && state.score>=30){
+      var aspect = (bossReady && bossImg.height) ? (bossImg.width / bossImg.height) : 0.5; // width/height
+      var bh = Math.min(innerHeight * 0.55, 700); // 高さ優先
+      var bw = Math.max(120, bh * aspect);
+      var maxAmp = Math.max(40, (innerWidth - bw)/2 - 16);
+      var amp = Math.min(maxAmp, Math.max(60, innerWidth*0.12));
+      state.boss={x:innerWidth/2,y:innerHeight*0.22,w:bw,h:bh,hp:100,t:0,cx:innerWidth/2,amp:amp,fireAcc:0};
+      bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; if(audioCtx) startBGM('boss'); }
 
     // boss
-    if(state.boss){ var B=state.boss; B.t += dt/1000; var margin=12; B.x = Math.max(B.w*0.5+margin, Math.min(innerWidth-B.w*0.5-margin, B.cx + B.amp*Math.sin(B.t*2.0)));
+    if(state.boss){ var B=state.boss; B.t += dt/1000; var margin=12; B.x = Math.max(B.w*0.5+12, Math.min(innerWidth-B.w*0.5-12, B.cx + B.amp*Math.sin(B.t*1.6)));
       // fire: every 300ms triple shot with slight spread
       B.fireAcc += dt; while(B.fireAcc>=300){ B.fireAcc-=300; var px2=state.player.x*innerWidth, py2=state.player.y*innerHeight; var sx=B.x, sy=B.y+B.h*0.1; var base=Math.atan2(py2-sy,px2-sx); var speed=300; for(var n=-1;n<=1;n++){ var a=base + n*0.1; state.bossShots.push({x:sx,y:sy,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:4}); } }
       // hits
