@@ -75,8 +75,18 @@
   function tone(freq,dur,type,vol,when){ if(!audioCtx) return; try{ var osc=audioCtx.createOscillator(); var g=audioCtx.createGain(); osc.type=type; osc.frequency.value=freq; g.gain.value=vol; osc.connect(g).connect(masterGain); var t=when||audioCtx.currentTime; g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur); osc.start(t); osc.stop(t+dur); }catch(e){} }
   function stopBGM(){ if(bgmTimerId){ clearTimeout(bgmTimerId); bgmTimerId=null; } }
   function startBGM(mode){ if(!audioCtx) return; try{ audioCtx.resume&&audioCtx.resume(); }catch(_){} stopBGM(); currentBgm=mode||'normal'; var tempo=(currentBgm==='boss')?220:180; var beat=60/tempo; var chords=(currentBgm==='boss')? [[110,147,220],[98,130,196],[123,164,220],[147,196,247]] : [[262,330,392],[220,294,392],[247,330,415],[220,294,392]]; function loop(){ if(!audioCtx) return; var now=audioCtx.currentTime+0.05; for(var bar=0; bar<4; bar++){ var t0=now+bar*4*beat, ch=chords[bar%4]; for(var s=0;s<4;s++){ tone(55,0.06,'square',0.13, t0 + s*beat); } tone(ch[0]/2,0.18,'triangle',0.10, t0); tone(ch[0]/2,0.18,'triangle',0.10, t0+2*beat); for(var hh=0; hh<8; hh++){ tone(9000,0.02,'square',0.03, t0 + hh*(beat/2)); } for(var i=0;i<16;i++){ var f=ch[i%3]*(currentBgm==='boss'?2.8:2.2); tone(f,0.09,'square', currentBgm==='boss'?0.085:0.06, t0 + i*(beat/4)); } } bgmTimerId=setTimeout(loop, (16*beat*1000)|0); } loop(); }
-  function sfxShoot(){ if(!audioCtx) return; tone(700,0.05,'square',0.18,audioCtx.currentTime); }
-  function sfxExplode(){ if(!audioCtx) return; var t=audioCtx.currentTime; tone(120,0.25,'sawtooth',0.3,t); tone(60,0.20,'triangle',0.25,t+0.03); }
+  function sfxShoot(){ setupSfx(); playSfx('shot', 0.85, 1.0); }
+  function sfxExplode(){ setupSfx(); playSfx('bakuha', 0.9, 1.0); }
+
+ 
+  // ===== SFX (MP3) with pooling & iOS unlock =====
+  var sfx={}, sfxLoaded=false, audioUnlocked=false;
+  function loadSfx(name, src, voices){ sfx[name]={pool:[], idx:0}; for(var i=0;i<voices;i++){ var a=new Audio(src); a.preload='auto'; a.crossOrigin='anonymous'; try{ a.load(); }catch(_){ } sfx[name].pool.push(a); } }
+  function setupSfx(){ if(sfxLoaded) return; loadSfx('shot','shot.mp3',6); loadSfx('bakuha','bakuha.mp3',6); sfxLoaded=true; }
+  function playSfx(name, vol, rate){ var e=sfx[name]; if(!e||e.pool.length===0) return; var a=e.pool[e.idx++ % e.pool.length]; try{ a.pause(); a.currentTime=0; if(typeof vol==='number') a.volume=vol; if(typeof rate==='number') a.playbackRate=rate; a.play().catch(function(){}); }catch(_){} }
+  function unlockAudioOnce(){ if(audioUnlocked) return; audioUnlocked=true; try{ if(!audioCtx) initAudio(); if(audioCtx){ var b=audioCtx.createBuffer(1,1,22050); var src=audioCtx.createBufferSource(); src.buffer=b; src.connect(masterGain); src.start(0); }
+    setupSfx(); Object.keys(sfx).forEach(function(k){ var a=sfx[k].pool[0]; try{ a.muted=true; a.play().then(function(){ a.pause(); a.currentTime=0; a.muted=false; }).catch(function(){}); }catch(_){ } });
+  }catch(_){ } }
 
   // ===== Assets (Boss image) =====
   var bossImg=new Image(); var bossReady=false; bossImg.onload=function(){ bossReady=true; }; bossImg.onerror=function(){ console.warn('boss.png not found; fallback UFO'); bossReady=false; }; bossImg.src='boss.png';
@@ -90,10 +100,10 @@
   // ===== Input: finger-follow =====
   var dragging=false;
   function setTargetFromEvent(e){ var t=e.touches?e.touches[0]:e; var r=cv.getBoundingClientRect(); var nx=(t.clientX-r.left)/r.width; var ny=(t.clientY-r.top)/r.height; state.player.tx=Math.max(0.05,Math.min(0.95,nx)); state.player.ty=Math.max(0.10,Math.min(0.95,ny)); }
-  cv.addEventListener('pointerdown', function(e){ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); });
+  cv.addEventListener('pointerdown', function(e){ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); unlockAudioOnce(); }); if(!audioCtx) initAudio(); });
   cv.addEventListener('pointermove', function(e){ if(dragging) setTargetFromEvent(e); });
   addEventListener('pointerup', function(){ dragging=false; });
-  cv.addEventListener('touchstart', function(e){ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); }, {passive:false});
+  cv.addEventListener('touchstart', function(e){ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); unlockAudioOnce(); }, {passive:false});
   cv.addEventListener('touchmove', function(e){ if(dragging) setTargetFromEvent(e); }, {passive:false});
   cv.addEventListener('touchend', function(){ dragging=false; });
   cv.addEventListener('touchcancel', function(){ dragging=false; });
@@ -189,7 +199,7 @@
 
   // ===== START button (robust) =====
   var startBtn=document.getElementById('startBtn');
-  function safeStart(e){ try{ e&&e.preventDefault&&e.preventDefault(); e&&e.stopPropagation&&e.stopPropagation(); }catch(_){} if(!audioCtx) initAudio(); startGame(); }
+  function safeStart(e){ try{ e&&e.preventDefault&&e.preventDefault(); e&&e.stopPropagation&&e.stopPropagation(); }catch(_){} if(!audioCtx) initAudio(); unlockAudioOnce(); startGame(); }catch(_){} if(!audioCtx) initAudio(); startGame(); }
   if(startBtn){ ['click','pointerdown','touchstart'].forEach(function(ev){ startBtn.addEventListener(ev, safeStart, {passive:false}); }); startBtn.onclick=safeStart; }
 })();
 </script>
