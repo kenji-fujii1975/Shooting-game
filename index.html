@@ -11,7 +11,8 @@
     canvas{ width:100%; height:100%; display:block; touch-action:none; }
     .hud{ position:fixed; top:env(safe-area-inset-top); left:0; right:0; display:flex; gap:8px; padding:8px 12px; pointer-events:none; z-index:5; }
     .badge{ background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.15); padding:6px 10px; border-radius:999px; font-variant-numeric:tabular-nums; box-shadow:0 2px 12px rgba(0,0,0,.25); }
-    .overlay{ position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.45); z-index:10; }
+    .overlay{ position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.45); z-index:10; pointer-events:auto; }
+.overlay *{ pointer-events:auto; }
     .card{ width:min(92vw,560px); border-radius:20px; padding:20px; background:rgba(14,18,30,.9); border:1px solid rgba(255,255,255,.15); box-shadow:0 10px 30px rgba(0,0,0,.4); }
     .card h1{ margin:6px 0 12px; font-size: clamp(20px,5vw,28px); }
     .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -61,7 +62,7 @@
 
   // ===== Audio (BGM + SFX) =====
   let audioCtx, masterGain;
-  function initAudio(){ if(audioCtx) return; audioCtx=new (window.AudioContext||window.webkitAudioContext)(); masterGain=audioCtx.createGain(); masterGain.gain.value=0.28; masterGain.connect(audioCtx.destination); playBGM(); }
+  function initAudio(){ try{ if(audioCtx) return; audioCtx=new (window.AudioContext||window.webkitAudioContext)(); masterGain=audioCtx.createGain(); masterGain.gain.value=0.28; masterGain.connect(audioCtx.destination); playBGM(); }catch(err){ console.warn('Audio init error', err); } }
   function tone(freq,dur,type,vol,when){ const osc=audioCtx.createOscillator(); const g=audioCtx.createGain(); osc.type=type; osc.frequency.value=freq; g.gain.value=vol; osc.connect(g).connect(masterGain); g.gain.setValueAtTime(vol,when); g.gain.exponentialRampToValueAtTime(0.001,when+dur); osc.start(when); osc.stop(when+dur); }
   function sfxShoot(){ if(!audioCtx) return; const t=audioCtx.currentTime; tone(700,0.05,'square',0.18,t); }
   function sfxExplode(){ if(!audioCtx) return; const t=audioCtx.currentTime; tone(140,0.20,'sawtooth',0.25,t); tone(70,0.18,'triangle',0.20,t+0.02); }
@@ -214,11 +215,8 @@
 
   // Robust START binding (Safari対策・二重登録OK)
   const startButton = document.getElementById('startBtn');
-  if (startButton) {
-    startButton.onclick = () => { if(!audioCtx) initAudio(); startGame(); };
-    startButton.addEventListener('click', (e)=>{ e.preventDefault(); if(!audioCtx) initAudio(); startGame(); });
-  } startBtn.onclick = startGame;
-})();
+function safeStart(e){ if(e){ try{ e.preventDefault(); e.stopPropagation(); }catch(_){} } try{ if(!audioCtx) initAudio(); }catch(_){} startGame(); }
+if(startButton){ ['click','pointerdown','touchstart'].forEach(ev=>{ startButton.addEventListener(ev, safeStart, {passive:false}); }); startButton.onclick = safeStart; })();
 function gameClear(){ state.running=false; const bossBadge = document.getElementById('bossBadge'); bossBadge.textContent='BOSS 0'; const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">巨大戦艦を撃破しました！<br>Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">PLAY AGAIN</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } }
 </script>
 </body>
