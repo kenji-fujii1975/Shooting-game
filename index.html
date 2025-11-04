@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>Rocket Shooter – D-Pad & Explosions</title>
+  <title>Rocket Shooter – Finger Follow</title>
   <style>
     :root { --fg:#e2e8f0; }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -17,16 +17,6 @@
     .row{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .btn{ pointer-events:auto; appearance:none; border:none; border-radius:14px; padding:12px 16px; font-size:16px; font-weight:700; color:#0b0f1a; background:#5eead4; box-shadow:0 4px 14px rgba(0,0,0,.25), inset 0 -2px 0 rgba(0,0,0,.25); }
     .hint{ position:fixed; left:0; right:0; bottom:env(safe-area-inset-bottom); color:#cbd5e1; text-align:center; padding:10px; font-size:12px; opacity:.8; z-index:5; }
-
-    /* === D-PAD === */
-    .dpad { position:fixed; left: env(safe-area-inset-left); bottom: calc(12px + env(safe-area-inset-bottom)); width: 140px; height: 140px; z-index:6; }
-    .dpad .ring { position:absolute; inset:0; border-radius:18px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.15); box-shadow:0 8px 20px rgba(0,0,0,0.3) inset; }
-    .dpad .btn { position:absolute; width:44%; height:44%; display:grid; place-items:center; font-weight:800; color:#0b1b3a; background:#a5b4fc; border-radius:12px; border:1px solid rgba(255,255,255,0.35); box-shadow:0 2px 8px rgba(0,0,0,0.3); user-select:none; touch-action:none; }
-    .dpad .btn:active { transform: translateY(1px); }
-    .dpad .up    { left:28%; top:4%; }
-    .dpad .down  { left:28%; bottom:4%; }
-    .dpad .left  { left:4%;  top:28%; }
-    .dpad .right { right:4%; top:28%; }
   </style>
 </head>
 <body>
@@ -36,23 +26,15 @@
     <div class="badge" id="score">SCORE 0000</div>
     <div class="badge" id="best">BEST 0000</div>
   </div>
-  <div class="hint">左下の十字キーで移動／オートショット</div>
-
-  <div class="dpad" id="dpad">
-    <div class="ring"></div>
-    <div class="btn up"    data-dir="up">▲</div>
-    <div class="btn down"  data-dir="down">▼</div>
-    <div class="btn left"  data-dir="left">◀</div>
-    <div class="btn right" data-dir="right">▶</div>
-  </div>
+  <div class="hint">画面を指でなぞってロケットを移動（オートショット）</div>
 
   <div class="overlay" id="menu">
     <div class="card">
       <h1>🚀 Rocket Shooter</h1>
-      <p style="color:#c7d2fe">十字キーでなめらか移動。UFOを撃破すると爆発アニメ！</p>
+      <p style="color:#c7d2fe">Dパッドを廃止して、<strong>指なぞり操作</strong>にしました。UFOは1発で撃破、爆発アニメあり。</p>
       <ul style="margin:0 0 12px 1.2em; color:#c7d2fe; line-height:1.7">
         <li>オートショット（毎秒8発）</li>
-        <li>BGM＋発射音＋爆発音</li>
+        <li>BGM＋発射音＋爆発音（最初のタップで有効化）</li>
       </ul>
       <div class="row"><button class="btn" id="startBtn">START</button></div>
     </div>
@@ -66,13 +48,12 @@
   const bestEl  = document.getElementById('best');
   const menu = document.getElementById('menu');
   const startBtn = document.getElementById('startBtn');
-  const dpad = document.getElementById('dpad');
 
   // HiDPI
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function resize(){ const w=innerWidth, h=innerHeight; cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; ctx.setTransform(dpr,0,0,dpr,0,0);} window.addEventListener('resize', resize, {passive:true}); resize();
 
-  const state={ running:false,last:performance.now(),score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,r:18,fireAcc:0,vx:0,vy:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], input:{up:false,down:false,left:false,right:false} };
+  const state={ running:false,last:performance.now(),score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[] };
   bestEl.textContent='BEST '+String(state.best).padStart(4,'0');
 
   // ===== Audio (BGM + SFX) =====
@@ -81,18 +62,20 @@
   function tone(freq,dur,type,vol,when){ const osc=audioCtx.createOscillator(); const g=audioCtx.createGain(); osc.type=type; osc.frequency.value=freq; g.gain.value=vol; osc.connect(g).connect(masterGain); g.gain.setValueAtTime(vol,when); g.gain.exponentialRampToValueAtTime(0.001,when+dur); osc.start(when); osc.stop(when+dur); }
   function sfxShoot(){ if(!audioCtx) return; const t=audioCtx.currentTime; tone(700,0.05,'square',0.18,t); }
   function sfxExplode(){ if(!audioCtx) return; const t=audioCtx.currentTime; tone(140,0.20,'sawtooth',0.25,t); tone(70,0.18,'triangle',0.20,t+0.02); }
-  function playBGM(){ if(!audioCtx) return; const tempo=140, beat=60/tempo, now=audioCtx.currentTime+0.05; const chords=[[261.63,329.63,392.00],[196.00,246.94,392.00],[220.00,261.63,329.63],[174.61,220.00,261.63]]; for(let bar=0;bar<4;bar++){ const t0=now+bar*4*beat; const chord=chords[bar%4]; tone(chord[0]/2,0.18,'triangle',0.06,t0); tone(chord[0]/2,0.18,'triangle',0.06,t0+2*beat); for(let i=0;i<8;i++){ tone(chord[i%3]*2,0.15,'square',0.05,t0+i*(beat/2)); } }
-    // simple loop re-trigger
-    setTimeout(function(){ if(audioCtx) playBGM(); }, 4000*beat*1000/4);
-  }
+  function playBGM(){ if(!audioCtx) return; const tempo=140, beat=60/tempo, now=audioCtx.currentTime+0.05; const chords=[[261.63,329.63,392.00],[196.00,246.94,392.00],[220.00,261.63,329.63],[174.61,220.00,261.63]]; for(let bar=0;bar<4;bar++){ const t0=now+bar*4*beat; const chord=chords[bar%4]; tone(chord[0]/2,0.18,'triangle',0.06,t0); tone(chord[0]/2,0.18,'triangle',0.06,t0+2*beat); for(let i=0;i<8;i++){ tone(chord[i%3]*2,0.15,'square',0.05,t0+i*(beat/2)); } } setTimeout(function(){ if(audioCtx) playBGM(); }, 4000*beat*1000/4); }
 
-  // ===== Input: D-Pad =====
-  function setDir(dir, on){ state.input[dir]=on; }
-  function bindBtn(el){ el.addEventListener('touchstart', e=>{ e.preventDefault(); setDir(el.dataset.dir,true); if(!audioCtx) initAudio(); }); el.addEventListener('touchend',   e=>{ e.preventDefault(); setDir(el.dataset.dir,false); }); el.addEventListener('touchcancel',e=>{ e.preventDefault(); setDir(el.dataset.dir,false); }); el.addEventListener('pointerdown', e=>{ setDir(el.dataset.dir,true); if(!audioCtx) initAudio(); }); el.addEventListener('pointerup',   e=>{ setDir(el.dataset.dir,false); }); }
-  Array.prototype.forEach.call(dpad.querySelectorAll('.btn'), bindBtn);
-
-  // Also allow drag-follow on canvas as fallback (optional)
-  cv.addEventListener('pointerdown', function(e){ if(!audioCtx) initAudio(); });
+  // ===== Finger-follow input (smooth) =====
+  let dragging=false;
+  function setTargetFromEvent(e){ const t=e.touches?e.touches[0]:e; const rect=cv.getBoundingClientRect(); const nx=(t.clientX-rect.left)/rect.width; const ny=(t.clientY-rect.top)/rect.height; state.player.tx=Math.max(0.05,Math.min(0.95,nx)); state.player.ty=Math.max(0.10,Math.min(0.95,ny)); }
+  cv.addEventListener('pointerdown', e=>{ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); });
+  cv.addEventListener('pointermove', e=>{ if(dragging) setTargetFromEvent(e); });
+  addEventListener('pointerup', ()=> dragging=false);
+  addEventListener('pointercancel', ()=> dragging=false);
+  // iOS Safari: also listen to touch
+  cv.addEventListener('touchstart', e=>{ dragging=true; setTargetFromEvent(e); if(!audioCtx) initAudio(); }, {passive:false});
+  cv.addEventListener('touchmove', e=>{ if(dragging) setTargetFromEvent(e); }, {passive:false});
+  cv.addEventListener('touchend', ()=> dragging=false);
+  cv.addEventListener('touchcancel', ()=> dragging=false);
 
   // ===== Helpers =====
   function rand(a,b){return a+Math.random()*(b-a);} function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
@@ -110,22 +93,11 @@
   function update(dt){
     const w=innerWidth, h=innerHeight;
 
-    // Player movement (smooth via acceleration)
-    const dirX = (state.input.right?1:0) - (state.input.left?1:0);
-    const dirY = (state.input.down?1:0) - (state.input.up?1:0);
-    const ACCEL = 1800; // px/s^2
-    const VMAX  = 320; // px/s
-    state.player.vx += dirX * ACCEL * dt/1000;
-    state.player.vy += dirY * ACCEL * dt/1000;
-    // friction when no input
-    state.player.vx *= (dirX===0 ? 0.90 : 0.98);
-    state.player.vy *= (dirY===0 ? 0.90 : 0.98);
-    // clamp speed
-    const clampVel = (v)=> Math.max(-VMAX, Math.min(VMAX, v));
-    state.player.vx = clampVel(state.player.vx);
-    state.player.vy = clampVel(state.player.vy);
-    state.player.x += (state.player.vx * dt)/w;
-    state.player.y += (state.player.vy * dt)/h;
+    // Smooth follow (exponential smoothing)
+    const FOLLOW = 10; // larger = quicker追従 (1/s)
+    const s = 1 - Math.exp(-FOLLOW * dt/1000);
+    state.player.x += (state.player.tx - state.player.x) * s;
+    state.player.y += (state.player.ty - state.player.y) * s;
     state.player.x = clamp(state.player.x, 0.05, 0.95);
     state.player.y = clamp(state.player.y, 0.10, 0.95);
 
@@ -170,7 +142,7 @@
 
   function loop(){ if(!state.running) return; const now=performance.now(); let dt=now-state.last; if(dt>80) dt=80; state.last=now; update(dt); draw(); requestAnimationFrame(loop); }
 
-  function startGame(){ if(!audioCtx) initAudio(); state.running=true; state.last=performance.now(); state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.vx=0; state.player.vy=0; state.explosions.length=0; menu.style.display='none'; requestAnimationFrame(loop); }
+  function startGame(){ if(!audioCtx) initAudio(); state.running=true; state.last=performance.now(); state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; menu.style.display='none'; requestAnimationFrame(loop); }
   function endGame(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } }
 
   startBtn.addEventListener('click', startGame); startBtn.onclick = startGame;
