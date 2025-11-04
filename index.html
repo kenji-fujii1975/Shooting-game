@@ -29,7 +29,7 @@
   <div class="overlay" id="menu">
     <div class="card">
       <h1>🚀 Rocket Shooter</h1>
-      <p>流れる星空の中を突き進め！<br>雑魚<strong>30機撃破</strong>で<strong>赤いUFOボス</strong>登場（<strong>高速・重低音BGM</strong>）。<br>アイテム：<strong>3</strong>(3方向) / <strong>V</strong>(2耐久バリア) / <strong>R</strong>(連射強化)</p>
+      <p>流れる星空の中を突き進め！<br>雑魚<strong>30機撃破</strong>で<strong>戦艦ボス</strong>登場（<strong>高速・重低音BGM</strong>）。<br>アイテム：<strong>3</strong>(3方向) / <strong>V</strong>(2耐久バリア) / <strong>R</strong>(連射強化)</p>
       <button class="btn" id="startBtn">START</button>
     </div>
   </div>
@@ -37,7 +37,11 @@
 <script>
 (function(){
   // ===== Self-tests (prevent silent DOM issues) =====
-  (function(){var ids=['game','score','best','bossBadge','menu','startBtn'];var miss=ids.filter(function(i){return !document.getElementById(i)}); console.assert(miss.length===0,'Missing DOM:',miss);})();
+  (function(){
+    var ids=['game','score','best','bossBadge','menu','startBtn'];
+    var miss=ids.filter(function(i){return !document.getElementById(i)});
+    console.assert(miss.length===0,'Missing DOM:',miss);
+  })();
 
   // ===== Canvas / DPR =====
   var cv=document.getElementById('game'), ctx=cv.getContext('2d');
@@ -75,13 +79,13 @@
   function sfxExplode(){ if(!audioCtx) return; var t=audioCtx.currentTime; tone(120,0.25,'sawtooth',0.3,t); tone(60,0.20,'triangle',0.25,t+0.03); }
 
   // ===== Assets (Boss image) =====
-  var bossImg=new Image(); var bossReady=false; bossImg.onload=function(){ bossReady=true; }; bossImg.onerror=function(){ console.warn('boss.png not found; fallback UFO'); bossReady=false; }; bossImg.src='boss.png'; // ← 画像ファイルを index.html と同じ場所に置いてください
+  var bossImg=new Image(); var bossReady=false; bossImg.onload=function(){ bossReady=true; }; bossImg.onerror=function(){ console.warn('boss.png not found; fallback UFO'); bossReady=false; }; bossImg.src='boss.png';
 
   // ===== Assets (Player image) =====
-  var playerImg=new Image(); var playerReady=false; playerImg.onload=function(){ playerReady=true; }; playerImg.onerror=function(){ console.warn('player.png not found; fallback rocket'); playerReady=false; }; playerImg.src='player.png'; // ← 自機画像を player.png という名前で同階層へ
+  var playerImg=new Image(); var playerReady=false; playerImg.onload=function(){ playerReady=true; }; playerImg.onerror=function(){ console.warn('player.png not found; fallback rocket'); playerReady=false; }; playerImg.src='player.png';
 
   // ===== Assets (Enemy image) =====
-  var enemyImg=new Image(); var enemyReady=false; enemyImg.onload=function(){ enemyReady=true; }; enemyImg.onerror=function(){ console.warn('enemy.png not found; fallback UFO'); enemyReady=false; }; enemyImg.src='enemy.png'; // ← 雑魚UFO画像を enemy.png で同階層へ
+  var enemyImg=new Image(); var enemyReady=false; enemyImg.onload=function(){ enemyReady=true; }; enemyImg.onerror=function(){ console.warn('enemy.png not found; fallback UFO'); enemyReady=false; }; enemyImg.src='enemy.png';
 
   // ===== Input: finger-follow =====
   var dragging=false;
@@ -97,97 +101,79 @@
   // ===== Helpers / Drawing =====
   function rand(a,b){ return a+Math.random()*(b-a); }
   function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
-  function drawPlayer(){ var x=state.player.x*innerWidth, y=state.player.y*innerHeight; var r=state.player.r; if(playerReady){ var aspect=playerImg.width && playerImg.height ? (playerImg.width/playerImg.height) : 1; var h=Math.min(innerHeight, innerWidth)*0.1; var w=h*aspect; // 画面サイズに追従
-      ctx.save(); ctx.translate(x,y); ctx.drawImage(playerImg, -w/2, -h/2, w, h); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,Math.max(w,h)*0.6,0,Math.PI*2); ctx.stroke(); } ctx.restore();
-    } else {
-      // フォールバック：従来のロケット
-      ctx.save(); ctx.translate(x,y); var fl=Math.sin(performance.now()/50)*2+6; ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0,r+2); ctx.lineTo(-4,r+2+fl); ctx.lineTo(4,r+2+fl); ctx.closePath(); ctx.fill(); ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75); ctx.lineTo(-r*0.55,r*0.75); ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r); ctx.fill(); ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2); ctx.fill(); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r*1.6,0,Math.PI*2); ctx.stroke(); } ctx.restore(); }
+  function drawPlayer(){ var x=state.player.x*innerWidth, y=state.player.y*innerHeight; var r=state.player.r; if(playerReady){ var aspect=playerImg.width && playerImg.height ? (playerImg.width/playerImg.height) : 1; var h=Math.min(innerHeight, innerWidth)*0.1; var w=h*aspect; ctx.save(); ctx.translate(x,y); ctx.drawImage(playerImg, -w/2, -h/2, w, h); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,Math.max(w,h)*0.6,0,Math.PI*2); ctx.stroke(); } ctx.restore(); } else { ctx.save(); ctx.translate(x,y); var fl=Math.sin(performance.now()/50)*2+6; ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0,r+2); ctx.lineTo(-4,r+2+fl); ctx.lineTo(4,r+2+fl); ctx.closePath(); ctx.fill(); ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75); ctx.lineTo(-r*0.55,r*0.75); ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r); ctx.fill(); ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2); ctx.fill(); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r*1.6,0,Math.PI*2); ctx.stroke(); } ctx.restore(); }
   }
   function drawUFO(e){ ctx.save(); ctx.translate(e.x,e.y); if(enemyReady){ var w=e.w||Math.max(28,(e.r||20)*2), h=e.h||Math.max(20,(e.r||20)*2); ctx.drawImage(enemyImg, -w/2, -h/2, w, h); } else { ctx.fillStyle='#9ca3af'; ctx.beginPath(); ctx.ellipse(0,0,(e.r||14)*1.5,(e.r||14)*0.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.ellipse(0,-(e.r||14)*0.3,(e.r||14)*0.8,(e.r||14)*0.5,0,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
-  function drawBoss(B){ ctx.save(); ctx.translate(B.x,B.y); if(bossReady){ ctx.drawImage(bossImg, -B.w/2, -B.h/2, B.w, B.h); } else { // fallback: 赤UFO
-      ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.ellipse(0,0,B.w*0.45,B.h*0.25,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fecaca'; ctx.beginPath(); ctx.ellipse(0,-B.h*0.18,B.w*0.18,B.h*0.18,0,0,Math.PI*2); ctx.fill(); }
-    ctx.restore(); }
+  function drawBoss(B){ ctx.save(); ctx.translate(B.x,B.y); if(bossReady){ ctx.drawImage(bossImg, -B.w/2, -B.h/2, B.w, B.h); } else { ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.ellipse(0,0,B.w*0.45,B.h*0.25,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fecaca'; ctx.beginPath(); ctx.ellipse(0,-B.h*0.18,B.w*0.18,B.h*0.18,0,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
   function drawItem(it){ ctx.save(); ctx.translate(it.x,it.y); ctx.fillStyle='#fef08a'; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#0b0f1a'; ctx.font='700 14px system-ui, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(it.type,0,1); ctx.restore(); }
   function createExplosion(x,y,strong){ var n=strong?40:18, parts=[]; for(var i=0;i<n;i++){ var a=Math.random()*Math.PI*2, sp=rand(80, strong?320:240); parts.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?'#fde047':'#f97316'});} state.explosions.push({parts:parts,age:0,life: strong?700:500}); }
 
   // ===== Spawners =====
-  function spawnEnemy(){ var x=rand(0.1,0.9)*innerWidth; var vy=rand(80,120); if(enemyReady && enemyImg.width>0 && enemyImg.height>0){ var aspect=enemyImg.width/enemyImg.height; var h=Math.min(innerHeight*0.09, 90); var w=Math.max(28, h*aspect); var r=Math.max(w,h)*0.28; state.enemies.push({x:x,y:-20,vy:vy,w:w,h:h,r:r}); } else { state.enemies.push({x:x,y:-20,r:14,vy:vy}); } }); } else { state.enemies.push({x:x,y:-20,r:14,vy:vy}); } }); }
+  function spawnEnemy(){
+    var x=rand(0.1,0.9)*innerWidth; var vy=rand(80,120);
+    if(enemyReady && enemyImg.width>0 && enemyImg.height>0){
+      var aspect=enemyImg.width/enemyImg.height;
+      var h=Math.min(innerHeight*0.09, 90);
+      var w=Math.max(28, h*aspect);
+      var r=Math.max(w,h)*0.28;
+      state.enemies.push({x:x,y:-20,vy:vy,w:w,h:h,r:r});
+    } else {
+      state.enemies.push({x:x,y:-20,r:14,vy:vy});
+    }
+  }
   function maybeSpawnItem(x,y){ if(Math.random()<0.1){ var types=['3','V','R']; var t=types[(Math.random()*3)|0]; state.items.push({x:x,y:y,type:t,vy:80}); } }
 
   // ===== Update =====
   function update(dt){
-    // Win freeze (celebration)
     if(state.freeze && state.clearTimer>0){ state.clearTimer-=dt; updateExplosions(dt); if(state.clearTimer<=0 && !state.clearShown){ state.clearShown=true; showClearOverlay(); } return; }
-    // Death freeze (2s)
     if(state.dieFreeze && state.dieTimer>0){ state.dieTimer-=dt; updateExplosions(dt); if(state.dieTimer<=0 && !state.dieShown){ state.dieShown=true; showGameOverOverlay(); } return; }
 
-    // smooth follow
     var s=1-Math.exp(-10*dt/1000); state.player.x += (state.player.tx-state.player.x)*s; state.player.y += (state.player.ty-state.player.y)*s; state.player.x=clamp(state.player.x,0.05,0.95); state.player.y=clamp(state.player.y,0.10,0.95);
 
-    // shooting (base 250ms; rapid halves it)
     state.player.fireAcc += dt; var rate = state.power.rapid ? state.player.fireRate/2 : state.player.fireRate; while(state.player.fireAcc>=rate){ state.player.fireAcc-=rate; var px=state.player.x*innerWidth, py=state.player.y*innerHeight - state.player.r; if(audioCtx) sfxShoot(); if(state.power.triple){ var spread=[-0.15,0,0.15]; for(var i=0;i<spread.length;i++){ var ang=spread[i]; state.bullets.push({x:px,y:py,vx:400*Math.sin(ang),vy:-400*Math.cos(ang)}); } } else { state.bullets.push({x:px,y:py,vx:0,vy:-400}); } }
 
-    // bullets
     for(var i=state.bullets.length-1;i>=0;i--){ var b=state.bullets[i]; b.x+=b.vx*dt/1000; b.y+=b.vy*dt/1000; if(b.y<-30||b.y>innerHeight+30||b.x<-30||b.x>innerWidth+30) state.bullets.splice(i,1); }
 
-    // enemies
     state.spawnAcc += dt; while(state.spawnAcc>=700){ state.spawnAcc-=700; spawnEnemy(); }
     for(var e=0;e<state.enemies.length;e++){ state.enemies[e].y += state.enemies[e].vy*dt/1000; }
     state.enemies = state.enemies.filter(function(e){ return e.y<innerHeight+40; });
 
-    // bullet -> enemy
     outer: for(var ei=state.enemies.length-1; ei>=0; ei--){ var E=state.enemies[ei]; for(var bj=state.bullets.length-1; bj>=0; bj--){ var BB=state.bullets[bj]; var dx=BB.x-E.x, dy=BB.y-E.y; if(dx*dx+dy*dy <= E.r*E.r){ state.enemies.splice(ei,1); state.bullets.splice(bj,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(E.x,E.y,false); maybeSpawnItem(E.x,E.y); break outer; } } }
 
-    // boss spawn at 30 kills
     if(!state.boss && state.score>=30){
-      var aspect = (bossReady && bossImg.height) ? (bossImg.width / bossImg.height) : 0.5; // width/height
-      var bh = Math.min(innerHeight * 0.55, 700); // 高さ優先
+      var aspect = (bossReady && bossImg.height) ? (bossImg.width / bossImg.height) : 0.5;
+      var bh = Math.min(innerHeight * 0.55, 700);
       var bw = Math.max(120, bh * aspect);
       var maxAmp = Math.max(40, (innerWidth - bw)/2 - 16);
       var amp = Math.min(maxAmp, Math.max(60, innerWidth*0.12));
       state.boss={x:innerWidth/2,y:innerHeight*0.22,w:bw,h:bh,hp:100,t:0,cx:innerWidth/2,amp:amp,fireAcc:0};
       bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; if(audioCtx) startBGM('boss'); }
 
-    // boss
-    if(state.boss){ var B=state.boss; B.t += dt/1000; var margin=12; B.x = Math.max(B.w*0.5+12, Math.min(innerWidth-B.w*0.5-12, B.cx + B.amp*Math.sin(B.t*1.6)));
-      // fire: every 300ms triple shot with slight spread
+    if(state.boss){ var B=state.boss; B.t += dt/1000; B.x = Math.max(B.w*0.5+12, Math.min(innerWidth-B.w*0.5-12, B.cx + B.amp*Math.sin(B.t*1.6)));
       B.fireAcc += dt; while(B.fireAcc>=300){ B.fireAcc-=300; var px2=state.player.x*innerWidth, py2=state.player.y*innerHeight; var sx=B.x, sy=B.y+B.h*0.1; var base=Math.atan2(py2-sy,px2-sx); var speed=300; for(var n=-1;n<=1;n++){ var a=base + n*0.1; state.bossShots.push({x:sx,y:sy,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:4}); } }
-      // hits
       for(var k=state.bullets.length-1;k>=0;k--){ var sb=state.bullets[k]; if(sb.x>=B.x-B.w/2 && sb.x<=B.x+B.w/2 && sb.y>=B.y-B.h/2 && sb.y<=B.y+B.h/2){ state.bullets.splice(k,1); if(B.hp>0){ B.hp--; bossBadge.textContent='BOSS '+B.hp; if(audioCtx) sfxExplode(); createExplosion(sb.x,sb.y,true); if(B.hp<=0){ bossBadge.style.display='none'; for(var t=0;t<10;t++){ createExplosion(B.x+rand(-30,30), B.y+rand(-20,20), true); } return gameClear(B.x,B.y); } } } }
-      // player collide with boss
       var pxp=state.player.x*innerWidth, pyp=state.player.y*innerHeight, pr=state.player.r; var inX = pxp+pr > B.x-B.w/2 && pxp-pr < B.x+B.w/2; var inY = pyp+pr > B.y-B.h/2 && pyp-pr < B.y+B.h/2; if(inX && inY){ if(state.power.shield>0){ state.power.shield--; } else { if(audioCtx) sfxExplode(); createExplosion(pxp,pyp,true); return triggerDeath(); } }
     }
 
-    // boss shots
     if(state.bossShots.length){ var psx=state.player.x*innerWidth, psy=state.player.y*innerHeight, pr2=state.player.r; for(var bs=state.bossShots.length-1; bs>=0; bs--){ var sh=state.bossShots[bs]; sh.x+=sh.vx*dt/1000; sh.y+=sh.vy*dt/1000; if(sh.x<-20||sh.x>innerWidth+20||sh.y<-40||sh.y>innerHeight+40){ state.bossShots.splice(bs,1); continue; } var dxs=psx-sh.x, dys=psy-sh.y; if(dxs*dxs + dys*dys <= (pr2+sh.r)*(pr2+sh.r)){ if(state.power.shield>0){ state.power.shield--; state.bossShots.splice(bs,1); continue; } if(audioCtx) sfxExplode(); createExplosion(psx,psy,true); return triggerDeath(); } } }
 
-    // enemy collide with player
     var pxe=state.player.x*innerWidth, pye=state.player.y*innerHeight, pre=state.player.r; for(var m=state.enemies.length-1;m>=0;m--){ var e2=state.enemies[m]; var dxe=pxe-e2.x, dye=pye-e2.y; if(dxe*dxe + dye*dye <= (pre+e2.r)*(pre+e2.r)){ if(state.power.shield>0){ state.power.shield--; state.enemies.splice(m,1); continue; } if(audioCtx) sfxExplode(); createExplosion(pxe,pye,true); return triggerDeath(); } }
 
-    // items update & pickup
     for(var it=state.items.length-1; it>=0; it--){ var I=state.items[it]; I.y += I.vy*dt/1000; if(I.y>innerHeight+20){ state.items.splice(it,1); continue; } if(Math.abs(I.x - pxe)<20 && Math.abs(I.y - pye)<20){ var ttype=I.type; state.items.splice(it,1); if(ttype==='3') state.power.triple=true; else if(ttype==='V') state.power.shield=2; else if(ttype==='R') state.power.rapid=true; } }
 
-    // explosions
     updateExplosions(dt);
   }
 
   function updateExplosions(dt){ for(var q=state.explosions.length-1;q>=0;q--){ var ex=state.explosions[q]; ex.age+=dt; var damp=0.98; for(var p=0;p<ex.parts.length;p++){ var part=ex.parts[p]; part.x += part.vx*dt/1000; part.y += part.vy*dt/1000; part.vx *= damp; part.vy *= damp; part.vy += 80*dt/1000; } if(ex.age> (ex.life||600) ){ state.explosions.splice(q,1); } } }
 
   // ===== Draw =====
-  function draw(){ var now=performance.now(); var dt=(state.last? now-state.last : 16); state.last=now; drawStars(dt); // starfield first
-    // enemies
+  function draw(){ var now=performance.now(); var dt=(state.last? now-state.last : 16); state.last=now; drawStars(dt);
     for(var i=0;i<state.enemies.length;i++) drawUFO(state.enemies[i]);
-    // boss
     if(state.boss) drawBoss(state.boss);
-    // bullets
     ctx.fillStyle='#fde047'; for(var b=0;b<state.bullets.length;b++){ var bb=state.bullets[b]; ctx.fillRect(bb.x-2,bb.y-8,4,8); }
-    // boss shots
     ctx.fillStyle='#ef4444'; for(var s=0;s<state.bossShots.length;s++){ var sh=state.bossShots[s]; ctx.beginPath(); ctx.arc(sh.x,sh.y,sh.r,0,Math.PI*2); ctx.fill(); }
-    // items
     for(var it=0; it<state.items.length; it++) drawItem(state.items[it]);
-    // player
     drawPlayer();
-    // explosions
     for(var e=0; e<state.explosions.length; e++){ var ex=state.explosions[e]; for(var p=0;p<ex.parts.length;p++){ var part=ex.parts[p]; ctx.fillStyle=part.color; ctx.fillRect(part.x-1,part.y-1,2,2); } }
   }
 
@@ -199,7 +185,7 @@
   function triggerDeath(){ state.dieFreeze=true; state.dieTimer=2000; state.dieShown=false; }
   function showGameOverOverlay(){ stopBGM(); state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">RETRY</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
   function gameClear(x,y){ state.freeze=true; state.clearTimer=1000; state.clearShown=false; var cx=(typeof x==='number')?x:(state.boss?state.boss.x:innerWidth/2); var cy=(typeof y==='number')?y:(state.boss?state.boss.y:innerHeight*0.25); for(var i=0;i<6;i++) createExplosion(cx+rand(-20,20), cy+rand(-20,20), true); state.boss=null; bossBadge.style.display='none'; }
-  function showClearOverlay(){ stopBGM(); state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">赤いUFOを撃破！<br>Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">PLAY AGAIN</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
+  function showClearOverlay(){ stopBGM(); state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">ボスを撃破！<br>Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">PLAY AGAIN</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
 
   // ===== START button (robust) =====
   var startBtn=document.getElementById('startBtn');
