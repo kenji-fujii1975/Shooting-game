@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>Rocket Shooter – Lite</title>
+  <title>Rocket Shooter – with Sound & UFO</title>
   <style>
     :root { --fg:#e2e8f0; }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -30,12 +30,12 @@
 
   <div class="overlay" id="menu">
     <div class="card">
-      <h1>🚀 Rocket Shooter – Lite</h1>
-      <p style="color:#c7d2fe">ステージは1つ。<strong>やさしい難易度</strong>：敵は弾1発で破壊。被弾でゲームオーバー。</p>
+      <h1>🚀 Rocket Shooter</h1>
+      <p style="color:#c7d2fe">音楽と効果音付き。敵はグレーのUFO型、1発で撃破。</p>
       <ul style="margin:0 0 12px 1.2em; color:#c7d2fe; line-height:1.7">
         <li>指でドラッグ＝ロケット移動</li>
         <li>オートショット（毎秒8発）</li>
-        <li>スコアは撃破数、ベストは自動保存</li>
+        <li>BGM＋弾発射音＋爆発音</li>
       </ul>
       <div class="row"><button class="btn" id="startBtn">START</button></div>
     </div>
@@ -52,146 +52,69 @@
 
   // HiDPI
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-  function resize(){
-    const w = innerWidth, h = innerHeight;
-    cv.width = Math.floor(w*dpr); cv.height = Math.floor(h*dpr);
-    cv.style.width = w+'px'; cv.style.height = h+'px';
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-  }
-  addEventListener('resize', resize, {passive:true});
-  resize();
+  function resize(){ const w=innerWidth, h=innerHeight; cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; ctx.setTransform(dpr,0,0,dpr,0,0);} window.addEventListener('resize', resize, {passive:true}); resize();
 
-  // State
-  const state = {
-    running:false,
-    last: performance.now(),
-    score: 0,
-    best: parseInt(localStorage.getItem('rs_best')||'0', 10),
-    player: { x: 0.5, y: 0.82, r: 18, fireAcc: 0 },
-    bullets: [],
-    enemies: [],
-    spawnAcc: 0,
-  };
-  bestEl.textContent = 'BEST ' + String(state.best).padStart(4,'0');
+  const state={ running:false,last:performance.now(),score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10),player:{x:0.5,y:0.82,r:18,fireAcc:0},bullets:[],enemies:[],spawnAcc:0 };
+  bestEl.textContent='BEST '+String(state.best).padStart(4,'0');
 
-  // Input: drag follow
-  let dragging = false;
-  function setFromEvent(e){
-    const t = e.touches ? e.touches[0] : e;
-    const rect = cv.getBoundingClientRect();
-    const x = (t.clientX - rect.left) / rect.width; // 0..1
-    const y = (t.clientY - rect.top) / rect.height;
-    state.player.x = Math.max(0.05, Math.min(0.95, x));
-    state.player.y = Math.max(0.1, Math.min(0.95, y));
+  // Audio setup
+  let audioCtx, masterGain;
+  function initAudio(){
+    if(audioCtx) return;
+    audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    masterGain=audioCtx.createGain(); masterGain.gain.value=0.3; masterGain.connect(audioCtx.destination);
+    playBGM();
   }
-  cv.addEventListener('pointerdown', (e)=>{ dragging=true; setFromEvent(e); });
-  cv.addEventListener('pointermove', (e)=>{ if(dragging) setFromEvent(e); });
-  addEventListener('pointerup', ()=> dragging=false);
-  addEventListener('pointercancel', ()=> dragging=false);
+  function playTone(freq,dur=0.1,type='square',vol=0.3){
+    if(!audioCtx) return;
+    const osc=audioCtx.createOscillator(); const g=audioCtx.createGain();
+    osc.type=type; osc.frequency.value=freq; g.gain.value=vol;
+    osc.connect(g).connect(masterGain);
+    const now=audioCtx.currentTime;
+    g.gain.setValueAtTime(vol,now); g.gain.exponentialRampToValueAtTime(0.001,now+dur);
+    osc.start(now); osc.stop(now+dur);
+  }
+  function sfxShoot(){ playTone(600,0.05,'square',0.2); }
+  function sfxExplode(){ playTone(120,0.3,'sawtooth',0.3); playTone(60,0.2,'triangle',0.2); }
+  function playBGM(){
+    const tempo=140; const beat=60/tempo;
+    for(let bar=0; bar<4; bar++){
+      for(let i=0;i<8;i++){
+        const n=[261.63,293.66,329.63,349.23][i%4];
+        const t=audioCtx.currentTime+(bar*8+i)*beat*0.5;
+        playTone(n/2,0.15,'triangle',0.05);
+      }
+    }
+  }
+
+  // Input
+  let dragging=false;
+  function setFromEvent(e){const t=e.touches?e.touches[0]:e;const rect=cv.getBoundingClientRect();const x=(t.clientX-rect.left)/rect.width;const y=(t.clientY-rect.top)/rect.height;state.player.x=Math.max(0.05,Math.min(0.95,x));state.player.y=Math.max(0.1,Math.min(0.95,y));}
+  cv.addEventListener('pointerdown',e=>{dragging=true;setFromEvent(e);if(!audioCtx)initAudio();});
+  cv.addEventListener('pointermove',e=>{if(dragging)setFromEvent(e);});
+  addEventListener('pointerup',()=>dragging=false);
+  addEventListener('pointercancel',()=>dragging=false);
 
   // Helpers
-  function rand(a,b){ return a + Math.random()*(b-a); }
-  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+  function rand(a,b){return a+Math.random()*(b-a);}
 
   // Drawing
-  function drawBG(){
-    const w=innerWidth, h=innerHeight;
-    const g=ctx.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,'#0b1b3a'); g.addColorStop(1,'#091226');
-    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-    // stars
-    ctx.globalAlpha=0.6; ctx.fillStyle='#94a3b8';
-    for(let i=0;i<40;i++){ const sx=(i*97%w); const sy=(i*53%h); ctx.fillRect(sx, sy, 2, 2); }
-    ctx.globalAlpha=1;
-  }
-  function drawRocket(x,y,r,t){
-    ctx.save(); ctx.translate(x,y); ctx.scale(1,1);
-    // flame
-    const fl = Math.sin(t*20)*2 + 6;
-    ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0, r+2); ctx.lineTo(-4, r+2+fl); ctx.lineTo(4, r+2+fl); ctx.closePath(); ctx.fill();
-    // body
-    ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6, -r*0.1, r*0.55, r*0.75); ctx.lineTo(-r*0.55, r*0.75); ctx.quadraticCurveTo(-r*0.6, -r*0.1, 0, -r); ctx.fill();
-    // window
-    ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0, -r*0.2, r*0.35, 0, Math.PI*2); ctx.fill();
-    // fins
-    ctx.fillStyle='#94a3b8'; ctx.beginPath(); ctx.moveTo(-r*0.55, r*0.5); ctx.lineTo(-r*0.95, r*0.75); ctx.lineTo(-r*0.55, r*0.75); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(r*0.55, r*0.5); ctx.lineTo(r*0.95, r*0.75); ctx.lineTo(r*0.55, r*0.75); ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-  function drawEnemy(e){
-    ctx.save(); ctx.translate(e.x, e.y);
-    ctx.fillStyle = e.color;
-    ctx.beginPath(); ctx.arc(0,0,e.r,0,Math.PI*2); ctx.fill();
-    ctx.restore();
-  }
+  function drawBG(){const w=innerWidth,h=innerHeight;const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'#0b1b3a');g.addColorStop(1,'#091226');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}
+  function drawRocket(x,y,r,t){ctx.save();ctx.translate(x,y);const fl=Math.sin(t*20)*2+6;ctx.fillStyle='#f97316';ctx.beginPath();ctx.moveTo(0,r+2);ctx.lineTo(-4,r+2+fl);ctx.lineTo(4,r+2+fl);ctx.closePath();ctx.fill();ctx.fillStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(0,-r);ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75);ctx.lineTo(-r*0.55,r*0.75);ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r);ctx.fill();ctx.fillStyle='#38bdf8';ctx.beginPath();ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2);ctx.fill();ctx.restore();}
+  function drawUFO(e){ctx.save();ctx.translate(e.x,e.y);ctx.fillStyle='#9ca3af';ctx.beginPath();ctx.ellipse(0,0,e.r*1.5,e.r*0.6,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#6b7280';ctx.beginPath();ctx.ellipse(0,-e.r*0.3,e.r*0.8,e.r*0.5,0,0,Math.PI*2);ctx.fill();ctx.restore();}
 
-  // Game logic
-  function spawnEnemy(){
-    const w=innerWidth; const x = rand(0.08, 0.92)*w; const y = -20; // top
-    state.enemies.push({ x, y, r: 14, vy: rand(80,120), color:'#22c55e' }); // easy, dies in 1 hit
-  }
+  // Logic
+  function spawnEnemy(){const w=innerWidth;const x=rand(0.1,0.9)*w;state.enemies.push({x,y:-20,r:14,vy:rand(80,120)});}
+  function update(dt){const w=innerWidth,h=innerHeight;state.player.fireAcc+=dt;const fireEvery=1000/8;while(state.player.fireAcc>=fireEvery){state.player.fireAcc-=fireEvery;state.bullets.push({x:state.player.x*w,y:state.player.y*h-state.player.r,vy:-360});sfxShoot();}for(const b of state.bullets){b.y+=b.vy*dt/1000;}state.bullets=state.bullets.filter(b=>b.y>-20);state.spawnAcc+=dt;const spawnEvery=700;while(state.spawnAcc>=spawnEvery){state.spawnAcc-=spawnEvery;spawnEnemy();}for(const e of state.enemies){e.y+=e.vy*dt/1000;}state.enemies=state.enemies.filter(e=>e.y<h+40);for(let i=state.enemies.length-1;i>=0;i--){const e=state.enemies[i];for(let j=state.bullets.length-1;j>=0;j--){const b=state.bullets[j];const dx=b.x-e.x,dy=b.y-e.y;if(dx*dx+dy*dy<=e.r*e.r){state.enemies.splice(i,1);state.bullets.splice(j,1);state.score++;scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0');sfxExplode();break;}}}const px=state.player.x*w,py=state.player.y*h,pr=state.player.r;for(const e of state.enemies){const dx=px-e.x,dy=py-e.y;if(dx*dx+dy*dy<=(pr+e.r)*(pr+e.r)){endGame();return;}}}
 
-  function update(dt){
-    const w=innerWidth, h=innerHeight;
-    // auto fire (8 shots/sec)
-    state.player.fireAcc += dt;
-    const fireEvery = 1000/8;
-    while(state.player.fireAcc >= fireEvery){ state.player.fireAcc -= fireEvery; state.bullets.push({ x: state.player.x*w, y: state.player.y*h - state.player.r, vy: -360 }); }
+  function draw(){drawBG();const w=innerWidth,h=innerHeight;ctx.globalAlpha=.08;ctx.strokeStyle='#ffffff';for(let y=0;y<h;y+=32){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}for(let x=0;x<w;x+=32){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}ctx.globalAlpha=1;const px=state.player.x*w,py=state.player.y*h;drawRocket(px,py,state.player.r,performance.now()/1000);ctx.fillStyle='#fde047';for(const b of state.bullets){ctx.fillRect(b.x-2,b.y-8,4,8);}for(const e of state.enemies){drawUFO(e);} }
 
-    // bullets
-    for(const b of state.bullets){ b.y += b.vy * dt/1000; }
-    state.bullets = state.bullets.filter(b => b.y > -20);
+  function loop(){if(!state.running)return;const now=performance.now();let dt=now-state.last;if(dt>80)dt=80;state.last=now;update(dt);draw();requestAnimationFrame(loop);}
 
-    // enemies
-    state.spawnAcc += dt;
-    const spawnEvery = 700; // easy density
-    while(state.spawnAcc >= spawnEvery){ state.spawnAcc -= spawnEvery; spawnEnemy(); }
-    for(const e of state.enemies){ e.y += e.vy * dt/1000; }
-    state.enemies = state.enemies.filter(e => e.y < h + 40);
+  function startGame(){state.running=true;state.last=performance.now();state.score=0;scoreEl.textContent='SCORE 0000';state.bullets.length=0;state.enemies.length=0;state.spawnAcc=0;state.player.fireAcc=0;state.player.x=0.5;state.player.y=0.82;menu.style.display='none';requestAnimationFrame(loop);}
+  function endGame(){state.running=false;if(state.score>state.best){state.best=state.score;localStorage.setItem('rs_best',String(state.best));}bestEl.textContent='BEST '+String(state.best).padStart(4,'0');const d=document.createElement('div');d.className='overlay';d.innerHTML=`<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>`;document.body.appendChild(d);document.getElementById('againBtn').onclick=()=>{document.body.removeChild(d);startGame();};}
 
-    // collisions (bullet -> enemy)
-    outer: for(let i=state.enemies.length-1;i>=0;i--){
-      const e = state.enemies[i];
-      for(let j=state.bullets.length-1;j>=0;j--){ const b=state.bullets[j]; const dx=b.x-e.x, dy=b.y-e.y; if(dx*dx+dy*dy <= e.r*e.r){ state.enemies.splice(i,1); state.bullets.splice(j,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); break outer; } }
-    }
-
-    // collisions (enemy -> player)
-    const px=state.player.x*w, py=state.player.y*h, pr=state.player.r;
-    for(const e of state.enemies){ const dx=px-e.x, dy=py-e.y; if(dx*dx+dy*dy <= (pr+e.r)*(pr+e.r)){ endGame(); return; } }
-  }
-
-  function draw(){
-    drawBG();
-    // grid
-    const w=innerWidth, h=innerHeight; ctx.globalAlpha=.08; ctx.strokeStyle='#ffffff'; for(let y=0;y<h;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } for(let x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1;
-    // player
-    const px=state.player.x*w, py=state.player.y*h;
-    drawRocket(px, py, state.player.r, performance.now()/1000);
-    // bullets
-    ctx.fillStyle='#fde047'; for(const b of state.bullets){ ctx.fillRect(b.x-2, b.y-8, 4, 8); }
-    // enemies
-    for(const e of state.enemies){ drawEnemy(e); }
-  }
-
-  function loop(){ if(!state.running) return; const now=performance.now(); let dt=now-state.last; if(dt>80) dt=80; state.last=now; update(dt); draw(); requestAnimationFrame(loop); }
-
-  function startGame(){
-    state.running=true; state.last=performance.now(); state.score=0; scoreEl.textContent='SCORE 0000';
-    state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82;
-    menu.style.display='none'; requestAnimationFrame(loop);
-  }
-
-  function endGame(){
-    state.running=false;
-    if(state.score > state.best){ state.best = state.score; localStorage.setItem('rs_best', String(state.best)); }
-    bestEl.textContent = 'BEST ' + String(state.best).padStart(4,'0');
-    const d=document.createElement('div'); d.className='overlay';
-    d.innerHTML = `<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>`;
-    document.body.appendChild(d);
-    document.getElementById('againBtn').onclick = ()=>{ document.body.removeChild(d); startGame(); };
-  }
-
-  startBtn.addEventListener('click', startGame); startBtn.onclick = startGame;
+  startBtn.addEventListener('click',()=>{if(!audioCtx)initAudio();startGame();});
 })();
 </script>
 </body>
