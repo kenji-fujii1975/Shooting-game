@@ -80,6 +80,9 @@
   // ===== Assets (Player image) =====
   var playerImg=new Image(); var playerReady=false; playerImg.onload=function(){ playerReady=true; }; playerImg.src='player.png'; // ← 自機画像を player.png という名前で同階層へ
 
+  // ===== Assets (Enemy image) =====
+  var enemyImg=new Image(); var enemyReady=false; enemyImg.onload=function(){ enemyReady=true; }; enemyImg.src='enemy.png'; // ← 雑魚UFO画像を enemy.png で同階層へ
+
   // ===== Input: finger-follow =====
   var dragging=false;
   function setTargetFromEvent(e){ var t=e.touches?e.touches[0]:e; var r=cv.getBoundingClientRect(); var nx=(t.clientX-r.left)/r.width; var ny=(t.clientY-r.top)/r.height; state.player.tx=Math.max(0.05,Math.min(0.95,nx)); state.player.ty=Math.max(0.10,Math.min(0.95,ny)); }
@@ -100,7 +103,7 @@
       // フォールバック：従来のロケット
       ctx.save(); ctx.translate(x,y); var fl=Math.sin(performance.now()/50)*2+6; ctx.fillStyle='#f97316'; ctx.beginPath(); ctx.moveTo(0,r+2); ctx.lineTo(-4,r+2+fl); ctx.lineTo(4,r+2+fl); ctx.closePath(); ctx.fill(); ctx.fillStyle='#e5e7eb'; ctx.beginPath(); ctx.moveTo(0,-r); ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75); ctx.lineTo(-r*0.55,r*0.75); ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r); ctx.fill(); ctx.fillStyle='#38bdf8'; ctx.beginPath(); ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2); ctx.fill(); if(state.power.shield>0){ ctx.strokeStyle='rgba(147,197,253,0.6)'; ctx.lineWidth=4; ctx.beginPath(); ctx.arc(0,0,r*1.6,0,Math.PI*2); ctx.stroke(); } ctx.restore(); }
   }
-  function drawUFO(e){ ctx.save(); ctx.translate(e.x,e.y); ctx.fillStyle='#9ca3af'; ctx.beginPath(); ctx.ellipse(0,0,e.r*1.5,e.r*0.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.ellipse(0,-e.r*0.3,e.r*0.8,e.r*0.5,0,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  function drawUFO(e){ ctx.save(); ctx.translate(e.x,e.y); if(enemyReady){ var w=e.w||Math.max(28,(e.r||20)*2), h=e.h||Math.max(20,(e.r||20)*2); ctx.drawImage(enemyImg, -w/2, -h/2, w, h); } else { ctx.fillStyle='#9ca3af'; ctx.beginPath(); ctx.ellipse(0,0,(e.r||14)*1.5,(e.r||14)*0.6,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#6b7280'; ctx.beginPath(); ctx.ellipse(0,-(e.r||14)*0.3,(e.r||14)*0.8,(e.r||14)*0.5,0,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
   function drawBoss(B){ ctx.save(); ctx.translate(B.x,B.y); if(bossReady){ ctx.drawImage(bossImg, -B.w/2, -B.h/2, B.w, B.h); } else { // fallback: 赤UFO
       ctx.fillStyle='#ef4444'; ctx.beginPath(); ctx.ellipse(0,0,B.w*0.45,B.h*0.25,0,0,Math.PI*2); ctx.fill(); ctx.fillStyle='#fecaca'; ctx.beginPath(); ctx.ellipse(0,-B.h*0.18,B.w*0.18,B.h*0.18,0,0,Math.PI*2); ctx.fill(); }
     ctx.restore(); }
@@ -108,7 +111,7 @@
   function createExplosion(x,y,strong){ var n=strong?40:18, parts=[]; for(var i=0;i<n;i++){ var a=Math.random()*Math.PI*2, sp=rand(80, strong?320:240); parts.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,color:i%2?'#fde047':'#f97316'});} state.explosions.push({parts:parts,age:0,life: strong?700:500}); }
 
   // ===== Spawners =====
-  function spawnEnemy(){ state.enemies.push({x:rand(0.1,0.9)*innerWidth,y:-20,r:14,vy:rand(80,120)}); }
+  function spawnEnemy(){ var x=rand(0.1,0.9)*innerWidth; var vy=rand(80,120); if(enemyReady && enemyImg.width && enemyImg.height){ var aspect=enemyImg.width/enemyImg.height; var h=Math.min(innerHeight*0.09, 90); var w=h*aspect; var r=Math.max(w,h)*0.28; state.enemies.push({x:x,y:-20,vy:vy,w:w,h:h,r:r}); } else { state.enemies.push({x:x,y:-20,r:14,vy:vy}); } }); }
   function maybeSpawnItem(x,y){ if(Math.random()<0.1){ var types=['3','V','R']; var t=types[(Math.random()*3)|0]; state.items.push({x:x,y:y,type:t,vy:80}); } }
 
   // ===== Update =====
