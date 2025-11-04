@@ -25,6 +25,9 @@
   <div class="hud">
     <div class="badge" id="score">SCORE 0000</div>
     <div class="badge" id="best">BEST 0000</div>
+    <div class="badge" id="bossBadge" style="display:none">BOSS 100</div>
+  </div>
+    <div class="badge" id="best">BEST 0000</div>
   </div>
   <div class="hint">画面を指でなぞってロケットを移動（オートショット）</div>
 
@@ -53,7 +56,7 @@
   const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function resize(){ const w=innerWidth, h=innerHeight; cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; ctx.setTransform(dpr,0,0,dpr,0,0);} window.addEventListener('resize', resize, {passive:true}); resize();
 
-  const state={ running:false,last:performance.now(),score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[] };
+  const state={ running:false,last:performance.now(),elapsed:0,score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], boss:null };
   bestEl.textContent='BEST '+String(state.best).padStart(4,'0');
 
   // ===== Audio (BGM + SFX) =====
@@ -84,26 +87,79 @@
   function drawBG(){const w=innerWidth,h=innerHeight;const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'#0b1b3a');g.addColorStop(1,'#091226');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);} 
   function drawRocket(x,y,r,t){ctx.save();ctx.translate(x,y);const fl=Math.sin(t*20)*2+6;ctx.fillStyle='#f97316';ctx.beginPath();ctx.moveTo(0,r+2);ctx.lineTo(-4,r+2+fl);ctx.lineTo(4,r+2+fl);ctx.closePath();ctx.fill();ctx.fillStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(0,-r);ctx.quadraticCurveTo(r*0.6,-r*0.1,r*0.55,r*0.75);ctx.lineTo(-r*0.55,r*0.75);ctx.quadraticCurveTo(-r*0.6,-r*0.1,0,-r);ctx.fill();ctx.fillStyle='#38bdf8';ctx.beginPath();ctx.arc(0,-r*0.2,r*0.35,0,Math.PI*2);ctx.fill();ctx.restore();}
   function drawUFO(e){ctx.save();ctx.translate(e.x,e.y);ctx.fillStyle='#9ca3af';ctx.beginPath();ctx.ellipse(0,0,e.r*1.5,e.r*0.6,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#6b7280';ctx.beginPath();ctx.ellipse(0,-e.r*0.3,e.r*0.8,e.r*0.5,0,0,Math.PI*2);ctx.fill();ctx.restore();}
+  function drawBoss(b){ ctx.save(); ctx.translate(b.x, b.y); // body
+    const w=b.w, h=b.h; ctx.fillStyle='#94a3b8'; ctx.fillRect(-w/2, -h/2, w, h); // deck
+    ctx.fillStyle='#6b7280'; ctx.fillRect(-w*0.35, -h*0.7, w*0.7, h*0.4); // bridge
+    // turrets
+    ctx.fillStyle='#cbd5e1'; for(let i=-2;i<=2;i++){ const tx=i*(w*0.16); ctx.fillRect(tx-12, -h*0.15, 24, 16); ctx.fillRect(tx-4, -h*0.15-18, 8, 18); }
+    // lights
+    ctx.fillStyle='#fbbf24'; for(let i=0;i<6;i++){ ctx.fillRect(-w/2 + 12 + i*(w-24)/5, h*0.25, 8, 8); }
+    ctx.restore(); }
   function drawExplosions(){ for(let i=state.explosions.length-1;i>=0;i--){ const ex=state.explosions[i]; const life=1 - ex.age/ex.life; if(life<=0){ state.explosions.splice(i,1); continue; } for(const p of ex.parts){ const alpha = life; ctx.globalAlpha = alpha; ctx.fillStyle = p.color; ctx.fillRect(p.x-1.5, p.y-1.5, 3, 3); ctx.globalAlpha = 1; } } }
 
   // ===== Game Logic =====
-  function spawnEnemy(){ const w=innerWidth; const x=rand(0.1,0.9)*w; state.enemies.push({x:x, y:-20, r:14, vy:rand(80,120)}); }
+  function spawnEnemy(){ if(state.boss) return; const w=innerWidth; const x=rand(0.1,0.9)*w; state.enemies.push({x:x, y:-20, r:14, vy:rand(80,120)}); }); }
   function createExplosion(x,y){ const parts=[]; const n=18; for(let i=0;i<n;i++){ const a = (Math.PI*2)*i/n + rand(-0.2,0.2); const sp = rand(60,240); parts.push({ x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, color: i%2? '#fde047':'#f97316' }); } state.explosions.push({ parts:parts, age:0, life:500 }); }
 
   function update(dt){
     const w=innerWidth, h=innerHeight;
+    state.elapsed += dt;
 
     // Smooth follow (exponential smoothing)
-    const FOLLOW = 10; // larger = quicker追従 (1/s)
-    const s = 1 - Math.exp(-FOLLOW * dt/1000);
+    const FOLLOW = 10; const s = 1 - Math.exp(-FOLLOW * dt/1000);
     state.player.x += (state.player.tx - state.player.x) * s;
     state.player.y += (state.player.ty - state.player.y) * s;
     state.player.x = clamp(state.player.x, 0.05, 0.95);
     state.player.y = clamp(state.player.y, 0.10, 0.95);
 
+    // Boss spawn at 30s
+    const bossBadge = document.getElementById('bossBadge');
+    if(!state.boss && state.elapsed >= 30000){
+      // clear small enemies to focus on boss
+      state.enemies.length = 0; state.spawnAcc = 0;
+      const bw = Math.min(w*0.75, 520), bh = Math.min(h*0.18, 140);
+      state.boss = { x:w/2, y: h*0.22, w: bw, h: bh, vx: 60, hp: 100 };
+      bossBadge.style.display='inline-block'; bossBadge.textContent = 'BOSS ' + state.boss.hp;
+    }
+
     // Auto fire (8/s)
     state.player.fireAcc += dt; const fireEvery=1000/8;
     while(state.player.fireAcc>=fireEvery){ state.player.fireAcc-=fireEvery; state.bullets.push({ x:state.player.x*w, y:state.player.y*h - state.player.r, vy:-360 }); if(audioCtx) sfxShoot(); }
+
+    // Bullets
+    for(const b of state.bullets){ b.y += b.vy * dt/1000; }
+    state.bullets = state.bullets.filter(b => b.y > -20);
+
+    // Enemies (disabled when boss exists)
+    if(!state.boss){
+      state.spawnAcc += dt; const spawnEvery=700; while(state.spawnAcc>=spawnEvery){ state.spawnAcc-=spawnEvery; spawnEnemy(); }
+      for(const e of state.enemies){ e.y += e.vy * dt/1000; }
+      state.enemies = state.enemies.filter(e => e.y < h + 40);
+    }
+
+    // Collisions bullet->enemy (skip if boss exists but keep safety)
+    if(!state.boss){
+      outer: for(let i=state.enemies.length-1;i>=0;i--){ const e=state.enemies[i]; for(let j=state.bullets.length-1;j>=0;j--){ const b=state.bullets[j]; const dx=b.x-e.x, dy=b.y-e.y; if(dx*dx+dy*dy <= e.r*e.r){ state.enemies.splice(i,1); state.bullets.splice(j,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(e.x, e.y); break outer; } } }
+    }
+
+    // Boss movement & collisions
+    if(state.boss){
+      const B = state.boss; // simple side-to-side drift
+      B.x += B.vx * dt/1000; if(B.x - B.w/2 < 10 || B.x + B.w/2 > w-10){ B.vx *= -1; }
+      // bullet -> boss (rectangle hit)
+      for(let j=state.bullets.length-1;j>=0;j--){ const b=state.bullets[j]; if(b.x>=B.x-B.w/2 && b.x<=B.x+B.w/2 && b.y>=B.y-B.h/2 && b.y<=B.y+B.h/2){ state.bullets.splice(j,1); if(B.hp>0){ B.hp--; if(audioCtx) sfxExplode(); bossBadge.textContent = 'BOSS ' + B.hp; createExplosion(b.x,b.y); if(B.hp<=0){ bossBadge.textContent = 'BOSS 0'; gameClear(); return; } } } }
+      // player -> boss
+      const px=state.player.x*w, py=state.player.y*h, pr=state.player.r;
+      const inX = px+pr > B.x-B.w/2 && px-pr < B.x+B.w/2; const inY = py+pr > B.y-B.h/2 && py-pr < B.y+B.h/2; if(inX && inY){ endGame(); return; }
+    } else {
+      // Collisions enemy->player
+      const px=state.player.x*w, py=state.player.y*h, pr=state.player.r;
+      for(const e of state.enemies){ const dx=px-e.x, dy=py-e.y; if(dx*dx+dy*dy <= (pr+e.r)*(pr+e.r)){ endGame(); return; } }
+    }
+
+    // Explosions update
+    for(let k=state.explosions.length-1;k>=0;k--){ const ex=state.explosions[k]; ex.age += dt; const damp = 0.98; for(const p of ex.parts){ p.x += p.vx * dt/1000; p.y += p.vy * dt/1000; p.vx *= damp; p.vy *= damp; p.vy += 180 * dt/1000 * 0.2; } if(ex.age>ex.life){ state.explosions.splice(k,1); } }
+  }); if(audioCtx) sfxShoot(); }
 
     // Bullets
     for(const b of state.bullets){ b.y += b.vy * dt/1000; }
@@ -134,6 +190,15 @@
     const px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000);
     // bullets
     ctx.fillStyle='#fde047'; for(const b of state.bullets){ ctx.fillRect(b.x-2,b.y-8,4,8); }
+    // enemies or boss
+    if(state.boss){ drawBoss(state.boss); } else { for(const e of state.enemies){ drawUFO(e); } }
+    // explosions
+    drawExplosions();
+  } for(let x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1;
+    // player
+    const px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000);
+    // bullets
+    ctx.fillStyle='#fde047'; for(const b of state.bullets){ ctx.fillRect(b.x-2,b.y-8,4,8); }
     // enemies
     for(const e of state.enemies){ drawUFO(e); }
     // explosions
@@ -142,11 +207,12 @@
 
   function loop(){ if(!state.running) return; const now=performance.now(); let dt=now-state.last; if(dt>80) dt=80; state.last=now; update(dt); draw(); requestAnimationFrame(loop); }
 
-  function startGame(){ if(!audioCtx) initAudio(); state.running=true; state.last=performance.now(); state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; menu.style.display='none'; requestAnimationFrame(loop); }
-  function endGame(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } }
+  function startGame(){ if(!audioCtx) initAudio(); state.running=true; state.last=performance.now(); state.elapsed=0; state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; state.boss=null; document.getElementById('bossBadge').style.display='none'; menu.style.display='none'; requestAnimationFrame(loop); }{ if(!audioCtx) initAudio(); state.running=true; state.last=performance.now(); state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; menu.style.display='none'; requestAnimationFrame(loop); }
+  function endGame(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class=\"card\"><h1>Game Over</h1><p style=\"color:#c7d2fe\">Score: <strong>${state.score}</strong></p><div class=\"row\"><button class=\"btn\" id=\"againBtn\">RETRY</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } }
 
-  startBtn.addEventListener('click', startGame); startBtn.onclick = startGame;
+  startBtn.addEventListener('click', startGame); startBtn.onclick = startGame; startBtn.onclick = startGame;
 })();
+function gameClear(){ state.running=false; const bossBadge = document.getElementById('bossBadge'); bossBadge.textContent='BOSS 0'; const d=document.createElement('div'); d.className='overlay'; d.innerHTML=`<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">巨大戦艦を撃破しました！<br>Score: <strong>${state.score}</strong></p><div class="row"><button class="btn" id="againBtn">PLAY AGAIN</button></div></div>`; document.body.appendChild(d); document.getElementById('againBtn').onclick=()=>{ document.body.removeChild(d); startGame(); } }
 </script>
 </body>
 </html>
