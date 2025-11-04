@@ -93,6 +93,27 @@
   function sfxExplode(){ if(!audioCtx) return; buildNoise(); var t=audioCtx.currentTime; try{ var src=audioCtx.createBufferSource(); src.buffer=noiseBuf; var g=audioCtx.createGain(); g.gain.setValueAtTime(0.4,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.7); src.connect(g).connect(masterGain); src.start(t); src.stop(t+0.7);}catch(_){ } }
   function sfxItem(){ if(!audioCtx) return; var t=audioCtx.currentTime; var o=audioCtx.createOscillator(); var g=audioCtx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(660,t); o.frequency.exponentialRampToValueAtTime(990,t+0.10); g.gain.setValueAtTime(0.18,t); g.gain.exponentialRampToValueAtTime(0.0001,t+0.18); o.connect(g).connect(masterGain); o.start(t); o.stop(t+0.2); }
 
+  // ===== BGM (loop, same for boss) =====
+  var bgmAudio=null;
+  function playBGM(){
+    try{
+      if(bgmAudio) return; // avoid double
+      bgmAudio = new Audio('music.mp3');
+      bgmAudio.loop = true;
+      bgmAudio.volume = 0.5; // adjust if needed
+      // start on user gesture (start button calls startGame)
+      bgmAudio.play().catch(function(e){ console.log('Autoplay blocked:', e); });
+    }catch(e){ console.warn('BGM error', e); }
+  }
+  function stopBGM(){
+    try{
+      if(!bgmAudio) return;
+      bgmAudio.pause();
+      bgmAudio.currentTime = 0;
+      bgmAudio = null;
+    }catch(e){ console.warn('BGM stop error', e); }
+  }
+
   // ===== Input =====
   var dragging=false; function setTarget(ev){ var t=ev.touches?ev.touches[0]:ev; var r=cv.getBoundingClientRect(); var nx=(t.clientX-r.left)/r.width; var ny=(t.clientY-r.top)/r.height; state.player.tx=Math.max(0.05,Math.min(0.95,nx)); state.player.ty=Math.max(0.10,Math.min(0.95,ny)); }
   cv.addEventListener('pointerdown',function(e){ dragging=true; setTarget(e); initAudio(); });
@@ -164,9 +185,9 @@
   function loop(){ if(!state.running) return; var now=performance.now(); var dt=state._last? (now-state._last):16; if(dt>80) dt=80; state._last=now; update(dt); draw(); requestAnimationFrame(loop); }
 
   // ===== Flow =====
-  function startGame(){ initAudio(); state.running=true; state._last=performance.now(); state.last=0; state.score=0; state.kills=0; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.explosions.length=0; state.items.length=0; state.boss=null; state.bossBullets.length=0; state.bossFireAcc=0; state.power={triple:false,rapid:false,shield:0}; state.player.fireRate=250; scoreEl.textContent='SCORE 0000'; if(killsEl) killsEl.textContent='KILLS 00/30'; powerEl.textContent='—'; bossBadge.style.display='none'; menu.style.display='none'; requestAnimationFrame(loop); }
-  function showGameOverOverlay(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">RETRY</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
-  function showClearOverlay(){ state.running=false; var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 CLEAR</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">PLAY AGAIN</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
+  function startGame(){ initAudio(); playBGM(); state.running=true; state._last=performance.now(); state.last=0; state.score=0; state.kills=0; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.explosions.length=0; state.items.length=0; state.boss=null; state.bossBullets.length=0; state.bossFireAcc=0; state.power={triple:false,rapid:false,shield:0}; state.player.fireRate=250; scoreEl.textContent='SCORE 0000'; if(killsEl) killsEl.textContent='KILLS 00/30'; powerEl.textContent='—'; bossBadge.style.display='none'; menu.style.display='none'; requestAnimationFrame(loop); }
+  function showGameOverOverlay(){ stopBGM(); state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">RETRY</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
+  function showClearOverlay(){ stopBGM(); state.running=false; var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 CLEAR</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><button class="btn" id="againBtn">PLAY AGAIN</button></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
 
   // start button waits image loading
   (function(){ var s=document.getElementById('startBtn'); if(!s) return; s.disabled=true; s.onclick=function(){ loadAll.then(function(){ startGame(); }); }; })();
