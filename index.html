@@ -216,3 +216,28 @@ function gameClear(){ state.running=false; const bossBadge = document.getElement
 </script>
 </body>
 </html>
+function startGame(){
+  if(!audioCtx) initAudio();
+  state.running = true;
+  state.last = performance.now();
+  state.elapsed = 0;
+  state.score = 0;
+  scoreEl.textContent = 'SCORE 0000';
+  state.bullets.length = 0;
+  state.enemies.length = 0;
+  state.spawnAcc = 0;
+  state.player.fireAcc = 0;
+  state.player.x = 0.5;
+  state.player.y = 0.82;
+  state.player.tx = 0.5;
+  state.player.ty = 0.82;
+  state.explosions.length = 0;
+  state.boss = null;
+  document.getElementById('bossBadge').style.display = 'none';
+  menu.style.display = 'none';
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  startGame();
+});
