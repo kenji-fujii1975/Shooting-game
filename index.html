@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-  <title>Rocket Shooter – SAFE START (Boss by 20 Kills)</title>
+  <title>Rocket Shooter – Red UFO Boss (20 Kills)</title>
   <style>
     :root { --fg:#e2e8f0; }
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -33,9 +33,9 @@
   <div class="overlay" id="menu">
     <div class="card">
       <h1>🚀 Rocket Shooter</h1>
-      <p style="color:#c7d2fe">指なぞり操作。UFOは1発で破壊。<br>UFOを<strong>20機撃墜</strong>すると巨大戦艦（ボス）が出現。<br>ボスには<strong>100発</strong>当てて撃破 → GAME CLEAR。</p>
+      <p style="color:#c7d2fe">UFOを<strong>10機撃墜</strong>すると、<strong>巨大な赤いUFOボス</strong>が出現！<br>ボスに<strong>100発</strong>当てるとゲームクリア。ボスは弾を撃ってくるので注意。</p>
       <ul style="margin:0 0 12px 1.2em; color:#c7d2fe; line-height:1.7">
-        <li>オートショット（毎秒8発）</li>
+        <li>指なぞり移動／オートショット（毎秒8発）</li>
         <li>BGM＋発射音＋爆発音（最初のタップで有効化）</li>
       </ul>
       <div class="row"><button class="btn" id="startBtn">START</button></div>
@@ -44,10 +44,11 @@
 
 <script>
 (function(){
-  // --- quick self-test to catch markup issues ---
+  // quick DOM self-test
   (function(){
-    const missing = ['game','score','best','menu','startBtn'].filter(id=>!document.getElementById(id));
-    if(missing.length){ console.error('DOM self-test failed. Missing:', missing); }
+    var req=['game','score','best','menu','startBtn'];
+    var miss=req.filter(function(id){return !document.getElementById(id)});
+    if(miss.length){ console.error('DOM self-test failed. Missing:', miss); }
   })();
 
   var cv = document.getElementById('game');
@@ -61,7 +62,7 @@
   var dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
   function resize(){ var w=innerWidth, h=innerHeight; cv.width=Math.floor(w*dpr); cv.height=Math.floor(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px'; ctx.setTransform(dpr,0,0,dpr,0,0);} window.addEventListener('resize', resize, {passive:true}); resize();
 
-  var state={ running:false,last:performance.now(),elapsed:0,score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], boss:null, bossShots:[] };
+  var state={ running:false,last:performance.now(),elapsed:0,score:0,best:parseInt(localStorage.getItem('rs_best')||'0',10), player:{x:0.5,y:0.82,tx:0.5,ty:0.82,r:18,fireAcc:0}, bullets:[], enemies:[], spawnAcc:0, explosions:[], boss:null, bossShots:[], freeze:false, clearTimer:0, clearShown:false };
   bestEl.textContent='BEST '+String(state.best).padStart(4,'0');
 
   // ===== Audio (safe) =====
@@ -104,10 +105,19 @@
   function drawExplosions(){ for(var i=state.explosions.length-1;i>=0;i--){ var ex=state.explosions[i]; var life=1 - ex.age/ex.life; if(life<=0){ state.explosions.splice(i,1); continue; } for(var k=0;k<ex.parts.length;k++){ var p=ex.parts[k]; ctx.globalAlpha = life; ctx.fillStyle = p.color; ctx.fillRect(p.x-1.5, p.y-1.5, 3, 3); ctx.globalAlpha = 1; } } }
 
   // ===== Game Logic =====
-  function spawnEnemy(){ if(state.boss) return; var w=innerWidth; var x=rand(0.1,0.9)*w; state.enemies.push({x:x, y:-20, r:14, vy:rand(80,120)}); }
+  function spawnEnemy(){ var w=innerWidth; var x=rand(0.1,0.9)*w; state.enemies.push({x:x, y:-20, r:14, vy:rand(80,120)}); }
   function createExplosion(x,y){ var parts=[]; var n=18; for(var i=0;i<n;i++){ var a = (Math.PI*2)*i/n + rand(-0.2,0.2); var sp = rand(60,240); parts.push({ x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, color: i%2? '#fde047':'#f97316' }); } state.explosions.push({ parts:parts, age:0, life:500 }); }
+  function createExplosionStrong(x,y){ var parts=[]; var n=40; for(var i=0;i<n;i++){ var a = (Math.PI*2)*i/n + rand(-0.15,0.15); var sp = rand(120,320); parts.push({ x:x, y:y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, color: i%3? '#fde047':'#f97316' }); } state.explosions.push({ parts:parts, age:0, life:700 }); }
 
   function update(dt){
+    // Victory FX mode: only play explosions for a moment, then show overlay
+    if(state.freeze && state.clearTimer>0){
+      state.clearTimer -= dt;
+      // Update explosions only
+      for(var q=state.explosions.length-1;q>=0;q--){ var ex=state.explosions[q]; ex.age += dt; var damp=0.98; for(var p=0;p<ex.parts.length;p++){ var part=ex.parts[p]; part.x += part.vx * dt/1000; part.y += part.vy * dt/1000; part.vx *= damp; part.vy *= damp; part.vy += 180 * dt/1000 * 0.2; } if(ex.age>ex.life){ state.explosions.splice(q,1); } }
+      if(state.clearTimer<=0 && !state.clearShown){ state.clearShown=true; showClearOverlay(); }
+      return; // skip gameplay while freezing
+    }
     var w=innerWidth, h=innerHeight;
 
     // smooth follow
@@ -117,8 +127,8 @@
     state.player.x = clamp(state.player.x, 0.05, 0.95);
     state.player.y = clamp(state.player.y, 0.10, 0.95);
 
-    // Boss spawn by kills (score >= 20)
-    if(!state.boss && state.score >= 20){ state.enemies.length = 0; state.spawnAcc = 0; var bw = Math.min(w*0.75, 520), bh = Math.min(h*0.18, 140); var amp = Math.min(w*0.15, 60); state.boss = { x:w/2, y:h*0.22, w:bw, h:bh, hp:100, t:0, cx:w/2, amp:amp, fireAcc:0 }; bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; }
+    // Boss spawn by kills (score >= 10)
+    if(!state.boss && state.score >= 10){ state.enemies.length = 0; state.spawnAcc = 0; var bw = Math.min(w*0.75, 520), bh = Math.min(h*0.18, 140); var amp = Math.min(w*0.15, 60); state.boss = { x:w/2, y:h*0.22, w:bw, h:bh, hp:100, t:0, cx:w/2, amp:amp, fireAcc:0 }; bossBadge.style.display='inline-block'; bossBadge.textContent='BOSS '+state.boss.hp; }
 
     // Auto fire (8/s)
     state.player.fireAcc += dt; var fireEvery=1000/8; while(state.player.fireAcc>=fireEvery){ state.player.fireAcc-=fireEvery; state.bullets.push({ x:state.player.x*w, y:state.player.y*h - state.player.r, vy:-360 }); if(audioCtx) sfxShoot(); }
@@ -127,42 +137,60 @@
     for(var i=0;i<state.bullets.length;i++){ var b=state.bullets[i]; b.y += b.vy * dt/1000; }
     state.bullets = state.bullets.filter(function(b){ return b.y > -20; });
 
-    // enemies
-    if(!state.boss){ state.spawnAcc += dt; var spawnEvery=700; while(state.spawnAcc>=spawnEvery){ state.spawnAcc-=spawnEvery; spawnEnemy(); } for(var j=0;j<state.enemies.length;j++){ var e=state.enemies[j]; e.y += e.vy * dt/1000; } state.enemies = state.enemies.filter(function(e){ return e.y < h + 40; }); }
+    // enemies (spawn even during boss)
+    state.spawnAcc += dt; var spawnEvery = state.boss ? 900 : 700; while(state.spawnAcc>=spawnEvery){ state.spawnAcc-=spawnEvery; spawnEnemy(); }
+    for(var j=0;j<state.enemies.length;j++){ var e=state.enemies[j]; e.y += e.vy * dt/1000; }
+    state.enemies = state.enemies.filter(function(e){ return e.y < h + 40; });
 
-    // bullet -> enemy
-    if(!state.boss){ outer: for(var i=state.enemies.length-1;i>=0;i--){ var e=state.enemies[i]; for(var j=state.bullets.length-1;j>=0;j--){ var bb=state.bullets[j]; var dx=bb.x-e.x, dy=bb.y-e.y; if(dx*dx+dy*dy <= e.r*e.r){ state.enemies.splice(i,1); state.bullets.splice(j,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(e.x,e.y); break outer; } } } }
+    // bullet -> enemy (always)
+    outer: for(var ei=state.enemies.length-1;ei>=0;ei--){ var ee=state.enemies[ei]; for(var bj=state.bullets.length-1;bj>=0;bj--){ var bb=state.bullets[bj]; var dx=bb.x-ee.x, dy=bb.y-ee.y; if(dx*dx+dy*dy <= ee.r*ee.r){ state.enemies.splice(ei,1); state.bullets.splice(bj,1); state.score++; scoreEl.textContent='SCORE '+String(state.score).padStart(4,'0'); if(audioCtx) sfxExplode(); createExplosion(ee.x,ee.y); break outer; } } }
 
-    // boss move & hits
-    if(state.boss){ var B=state.boss; // small sinusoidal movement near center
-      B.t += dt/1000; var margin = 12; B.x = Math.max(B.w*0.5+margin, Math.min(w - B.w*0.5 - margin, B.cx + B.amp*Math.sin(B.t*2.0)));
-      // boss firing toward player
-      B.fireAcc += dt; var fireEveryBoss = 900; while(B.fireAcc >= fireEveryBoss){ B.fireAcc -= fireEveryBoss; var px=state.player.x*w, py=state.player.y*h; var sx=B.x, sy=B.y + B.h*0.1; var dx=px - sx, dy=py - sy; var len=Math.max(1, Math.hypot(dx,dy)); var speed=260; state.bossShots.push({ x:sx, y:sy, vx:dx/len*speed, vy:dy/len*speed, r:4 }); }
+    // boss movement & firing
+    if(state.boss){ var B=state.boss; B.t += dt/1000; var margin=12; B.x = Math.max(B.w*0.5+margin, Math.min(w - B.w*0.5 - margin, B.cx + B.amp*Math.sin(B.t*2.0)));
+      // firing toward player (0.3s, triple-shot slight spread)
+      B.fireAcc += dt; var fireEveryBoss=300; while(B.fireAcc >= fireEveryBoss){ B.fireAcc -= fireEveryBoss; var px=state.player.x*w, py=state.player.y*h; var sx=B.x, sy=B.y + B.h*0.1; var dxp=px - sx, dyp=py - sy; var base=Math.atan2(dyp,dxp); var speed=260; for(var n=-1;n<=1;n++){ var a=base + n*0.08; state.bossShots.push({ x:sx, y:sy, vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:4 }); } }
       // bullet -> boss
-      for(var k=state.bullets.length-1;k>=0;k--){ var sb=state.bullets[k]; if(sb.x>=B.x-B.w/2 && sb.x<=B.x+B.w/2 && sb.y>=B.y-B.h/2 && sb.y<=B.y+B.h/2){ state.bullets.splice(k,1); if(B.hp>0){ B.hp--; if(audioCtx) sfxExplode(); bossBadge.textContent='BOSS '+B.hp; createExplosion(sb.x,sb.y); if(B.hp<=0){ bossBadge.textContent='BOSS 0'; return gameClear(); } } } }
-      // player collision with boss
+      for(var k=state.bullets.length-1;k>=0;k--){ var sb=state.bullets[k]; if(sb.x>=B.x-B.w/2 && sb.x<=B.x+B.w/2 && sb.y>=B.y-B.h/2 && sb.y<=B.y+B.h/2){ state.bullets.splice(k,1); if(B.hp>0){ B.hp--; if(audioCtx) sfxExplode(); bossBadge.textContent='BOSS '+B.hp; createExplosionStrong(sb.x,sb.y); if(B.hp<=0){ bossBadge.textContent='BOSS 0';
+        // extra burst on kill
+        for(var burst=0; burst<8; burst++){ createExplosionStrong(B.x + rand(-30,30), B.y + rand(-20,20)); }
+        return gameClear(B.x, B.y); } } } }
+      // player collision with boss body
       var pxp=state.player.x*w, pyp=state.player.y*h, pr=state.player.r; var inX = pxp+pr > B.x-B.w/2 && pxp-pr < B.x+B.w/2; var inY = pyp+pr > B.y-B.h/2 && pyp-pr < B.y+B.h/2; if(inX && inY){ return endGame(); }
-    } else {
-      // enemy -> player
-      var px=state.player.x*w, py=state.player.y*h, pr=state.player.r; for(var m=0;m<state.enemies.length;m++){ var ee=state.enemies[m]; var dx2=px-ee.x, dy2=py-ee.y; if(dx2*dx2+dy2*dy2 <= (pr+ee.r)*(pr+ee.r)){ return endGame(); } }
     }
 
     // explosions update
     for(var q=state.explosions.length-1;q>=0;q--){ var ex=state.explosions[q]; ex.age += dt; var damp=0.98; for(var p=0;p<ex.parts.length;p++){ var part=ex.parts[p]; part.x += part.vx * dt/1000; part.y += part.vy * dt/1000; part.vx *= damp; part.vy *= damp; part.vy += 180 * dt/1000 * 0.2; } if(ex.age>ex.life){ state.explosions.splice(q,1); } }
-    // boss shots update & collision with player
-    if(state.bossShots.length){ var pxs=state.player.x*w, pys=state.player.y*h, prs=state.player.r; for(var bs=state.bossShots.length-1; bs>=0; bs--){ var shot=state.bossShots[bs]; shot.x += shot.vx * dt/1000; shot.y += shot.vy * dt/1000; if(shot.x < -20 || shot.x > w+20 || shot.y < -40 || shot.y > h+40){ state.bossShots.splice(bs,1); continue; } var dxs = pxs - shot.x, dys = pys - shot.y; if(dxs*dxs + dys*dys <= (prs+shot.r)*(prs+shot.r)){ return endGame(); } } }
-    }
-  
 
-  function draw(){ drawBG(); var w=innerWidth, h=innerHeight; ctx.globalAlpha=.08; ctx.strokeStyle='#ffffff'; for(var y=0;y<h;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } for(var x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1; var px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000); ctx.fillStyle='#fde047'; for(var i=0;i<state.bullets.length;i++){ var b=state.bullets[i]; ctx.fillRect(b.x-2,b.y-8,4,8); } if(state.boss){ drawBoss(state.boss); } else { for(var j=0;j<state.enemies.length;j++){ drawUFO(state.enemies[j]); } } ctx.fillStyle = '#ef4444'; for(var s=0;s<state.bossShots.length;s++){ var sh=state.bossShots[s]; ctx.beginPath(); ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI*2); ctx.fill(); } drawExplosions(); }
+    // boss shots update & hit player
+    if(state.bossShots.length){ var pxs=state.player.x*w, pys=state.player.y*h, prs=state.player.r; for(var bs=state.bossShots.length-1; bs>=0; bs--){ var shot=state.bossShots[bs]; shot.x += shot.vx * dt/1000; shot.y += shot.vy * dt/1000; if(shot.x < -20 || shot.x > w+20 || shot.y < -40 || shot.y > h+40){ state.bossShots.splice(bs,1); continue; } var dxs = pxs - shot.x, dys = pys - shot.y; if(dxs*dxs + dys*dys <= (prs+shot.r)*(prs+shot.r)){ return endGame(); } } }
+
+    // enemy -> player (always check)
+    var pxe=state.player.x*w, pye=state.player.y*h, pre=state.player.r; for(var m=0;m<state.enemies.length;m++){ var e2=state.enemies[m]; var dxe=pxe-e2.x, dye=pye-e2.y; if(dxe*dxe + dye*dye <= (pre+e2.r)*(pre+e2.r)){ return endGame(); } }
+  }
+
+  function draw(){ drawBG(); var w=innerWidth, h=innerHeight; ctx.globalAlpha=.08; ctx.strokeStyle='#ffffff'; for(var y=0;y<h;y+=32){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } for(var x=0;x<w;x+=32){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); } ctx.globalAlpha=1; var px=state.player.x*w, py=state.player.y*h; drawRocket(px,py,state.player.r,performance.now()/1000); ctx.fillStyle='#fde047'; for(var i=0;i<state.bullets.length;i++){ var b=state.bullets[i]; ctx.fillRect(b.x-2,b.y-8,4,8); } if(state.boss){ drawBoss(state.boss); } for(var j=0;j<state.enemies.length;j++){ drawUFO(state.enemies[j]); } ctx.fillStyle = '#ef4444'; for(var s=0;s<state.bossShots.length;s++){ var sh=state.bossShots[s]; ctx.beginPath(); ctx.arc(sh.x, sh.y, sh.r, 0, Math.PI*2); ctx.fill(); } drawExplosions(); }
 
   function loop(){ if(!state.running) return; var now=performance.now(); var dt=now-state.last; if(dt>80) dt=80; state.last=now; update(dt); draw(); requestAnimationFrame(loop); }
 
-  function startGame(){ try{ if(!audioCtx) initAudio(); }catch(e){} state.running=true; state.last=performance.now(); state.elapsed=0; state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; state.boss=null; bossBadge.style.display='none'; menu.style.display='none'; requestAnimationFrame(loop); }
+  function startGame(){ try{ if(!audioCtx) initAudio(); }catch(e){} state.running=true; state.last=performance.now(); state.elapsed=0; state.score=0; scoreEl.textContent='SCORE 0000'; state.bullets.length=0; state.enemies.length=0; state.spawnAcc=0; state.player.fireAcc=0; state.player.x=0.5; state.player.y=0.82; state.player.tx=0.5; state.player.ty=0.82; state.explosions.length=0; state.boss=null; state.bossShots.length=0; bossBadge.style.display='none'; menu.style.display='none'; requestAnimationFrame(loop); }
   function endGame(){ state.running=false; if(state.score>state.best){ state.best=state.score; localStorage.setItem('rs_best', String(state.best)); } bestEl.textContent='BEST '+String(state.best).padStart(4,'0'); var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>Game Over</h1><p style="color:#c7d2fe">Score: <strong>'+state.score+'</strong></p><div class="row"><button class="btn" id="againBtn">RETRY</button></div></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
-  function gameClear(){ state.running=false; var d=document.createElement('div'); d.className='overlay'; d.innerHTML='<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">巨大戦艦を撃破しました！<br>Score: <strong>'+state.score+'</strong></p><div class="row"><button class="btn" id="againBtn">PLAY AGAIN</button></div></div>'; document.body.appendChild(d); document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); }; }
+  function gameClear(x,y){
+    // Keep loop alive for celebration FX
+    state.freeze = true; state.clearTimer = 1000; state.clearShown = false;
+    var cx = (typeof x==='number')? x : (state.boss? state.boss.x : innerWidth/2);
+    var cy = (typeof y==='number')? y : (state.boss? state.boss.y : innerHeight*0.25);
+    for(var i=0;i<6;i++){ createExplosionStrong(cx + rand(-20,20), cy + rand(-20,20)); }
+    state.boss = null; bossBadge.style.display='none';
+  }
+  function showClearOverlay(){
+    var d=document.createElement('div'); d.className='overlay';
+    d.innerHTML='<div class="card"><h1>🎉 GAME CLEAR!</h1><p style="color:#c7d2fe">赤いUFOを撃破！<br>Score: <strong>'+state.score+'</strong></p><div class="row"><button class="btn" id="againBtn">PLAY AGAIN</button></div></div>';
+    document.body.appendChild(d);
+    document.getElementById('againBtn').onclick=function(){ document.body.removeChild(d); startGame(); };
+    state.running=false; // stop after overlay is shown
+  }
 
-  // ====== SAFE START binding (no inline handler) ======
+  // SAFE START binding
   var startBtn = document.getElementById('startBtn');
   function safeStart(e){ try{ if(e&&e.preventDefault) e.preventDefault(); if(e&&e.stopPropagation) e.stopPropagation(); }catch(_){} try{ if(!audioCtx) initAudio(); }catch(_){} startGame(); }
   if (startBtn){ ['click','pointerdown','touchstart'].forEach(function(ev){ startBtn.addEventListener(ev, safeStart, {passive:false}); }); startBtn.onclick = safeStart; }
